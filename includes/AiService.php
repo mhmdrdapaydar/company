@@ -4,12 +4,13 @@ declare(strict_types=1);
 /**
  * سرویس یکپارچه هوش مصنوعی رایگان برای پردازش ویس (صدا) و ایجاد هوشمند تسک
  *
- * لایه‌های رایگان پشتیبانی‌شده:
- *  1) Groq Free Tier (Whisper-Large-v3-Turbo برای تبدیل دقیق ویس فارسی به متن + Llama 3.3 70B رایگان)
- *  2) Google Gemini Free Tier (Gemini 2.5 Flash با پردازش مستقیم فایل صوتی فارسی و متن - کلید رایگان AI Studio)
- *  3) Pollinations AI Free (مدل زبانی کاملاً رایگان و بدون هیچ کلید API)
- *  4) موتور پردازش زبان طبیعی فارسی داخلی (PersianVoiceParser - ۱۰۰٪ رایگان، آنی و بدون محدودیت)
- *  + در سمت مرورگر نیز Web Speech API رایگان (fa-IR) هم‌زمان با ضبط ویس متن گفتار را استخراج می‌کند.
+ * زنجیره تشخیص گفتار (STT) — همه لایه‌ها رایگان:
+ *  ۱) Groq Whisper Large v3 Turbo  ← سریع‌ترین و دقیق‌ترین (کلید رایگان Groq)
+ *  ۲) Google Gemini 2.5 Flash      ← صدا را مستقیم می‌فهمد (کلید رایگان AI Studio)
+ *  ۳) Pollinations Whisper         ← بدون هیچ کلید (پیش‌فرض صوتی رایگان)
+ *  ۴) Puter.js در مرورگر           ← بدون کلید، اگر سرور به بیرون دسترسی نداشته باشد
+ *  ۵) Web Speech API مرورگر (fa-IR) ← آنی و رایگان
+ * سپس متن استخراج‌شده با Groq Llama / Pollinations / موتور NLP فارسی داخلی به تسک تبدیل می‌شود.
  */
 final class AiService
 {
@@ -31,24 +32,6 @@ final class AiService
         $usedEngine = '';
         $notes      = [];
 
-        // گام ۱: اگر کلید رایگان Groq تنظیم شده و فایل صوتی داریم، با Whisper Large v3 صدای فارسی را دقیق پیاده‌سازی کن
-        if (
-            in_array($preferred, ['auto', 'groq'], true)
-            && $groqKey !== ''
-            && $savedVoice !== null
-            && !empty($savedVoice['full_path'])
-            && is_file($savedVoice['full_path'])
-        ) {
-            try {
-                $whisperText = self::transcribeWithGroqWhisper($savedVoice['full_path'], $savedVoice['mime_type'], $groqKey);
-                if ($whisperText !== '') {
-                    $transcript = normalize_persian($whisperText);
-                    $usedEngine = 'Groq Whisper v3 (رایگان)';
-                }
-            } catch (Throwable $e) {
-                $notes[] = 'Whisper: ' . $e->getMessage();
-            }
-        }
 
         // گام ۲: اگر کلید رایگان Google Gemini فعال است (می‌تواند مستقیم فایل صوتی فارسی را بدون نیاز به متن هم بفهمد!)
         if (
@@ -79,11 +62,56 @@ final class AiService
             }
         }
 
+        $hasAudio = $savedVoice !== null
+            && !empty($savedVoice['full_path'])
+            && is_file($savedVoice['full_path'])
+            && (int) ($savedVoice['size'] ?? 0) > 0;
+
+        // ────────────────────────────────────────────────────────────────
+        // مرحله تشخیص گفتار (STT): اگر متن از مرورگر نرسیده باشد، صدا را روی سرور پیاده‌سازی می‌کنیم.
+        // ترتیب: Groq → Gemini → Pollinations (بدون کلید) و در آخر گزارش شفاف خطاها
+        // ────────────────────────────────────────────────────────────────
+        if ($hasAudio && $transcript === '') {
+            $audioPath = (string) $savedVoice['full_path'];
+            $audioMime = (string) ($savedVoice['mime_type'] ?? 'audio/webm');
+
+            // ۱) Groq Whisper (رایگان، دقیق‌ترین گزینه برای فارسی)
+            if (in_array($preferred, ['auto', 'groq', 'pollinations'], true) && $groqKey !== '') {
+                try {
+                    $t = self::transcribeWithGroqWhisper($audioPath, $audioMime, $groqKey);
+                    if ($t !== '') {
+                        $transcript = normalize_persian($t);
+                        $usedEngine = 'Groq Whisper v3 (رایگان)';
+                        $notes[] = 'متن گفتار با Groq Whisper استخراج شد.';
+                    }
+                } catch (Throwable $e) {
+                    $notes[] = 'Groq Whisper ناموفق: ' . $e->getMessage();
+                }
+            }
+
+            // ۲) Pollinations Whisper — بدون کلید و همیشه در دسترس (اگر Groq کلید نداشت یا خطا داد)
+            if ($transcript === '' && in_array($preferred, ['auto', 'pollinations', 'groq'], true)) {
+                try {
+                    $t = self::transcribeWithPollinationsWhisper($audioPath, $audioMime);
+                    if ($t !== '') {
+                        $transcript = normalize_persian($t);
+                        $usedEngine = 'Pollinations Whisper (رایگان بدون کلید)';
+                        $notes[] = 'متن گفتار با Pollinations Whisper استخراج شد.';
+                    }
+                } catch (Throwable $e) {
+                    $notes[] = 'Pollinations Whisper ناموفق: ' . $e->getMessage();
+                }
+            }
+
+            // ۳) هیچ موتور سروری موفق نشد → پیام فارسی روشن با علت‌های واقعی
+            if ($transcript === '') {
+                throw new RuntimeException(self::sttFailureMessage($notes));
+            }
+        }
+
         // اگر نه سرویس صوتی ابری متنی برگرداند و نه مرورگر متنی ثبت کرد
         if ($transcript === '') {
-            throw new RuntimeException(
-                'متن گفتار تشخیص داده نشد. لطفاً هنگام ضبط با مرورگر Chrome/Edge واضح به فارسی صحبت کنید، یا متن فرمان را در کادر بنویسید، یا کلید رایگان Groq / Gemini را در تنظیمات وارد نمایید.'
-            );
+            throw new RuntimeException(self::sttFailureMessage($notes));
         }
 
         // گام ۳: تحلیل متن گفتار با Groq Llama 3.3 رایگان (در صورت وجود کلید رایگان)
@@ -199,6 +227,205 @@ PROMPT;
     }
 
     /**
+     * بررسی سریع دسترسی سرور به یک سرویس بیرونی (برای صفحه عیب‌یابی)
+     * فقط کد وضعیت HTTP یا علت خطا را برمی‌گرداند و هیچ داده‌ای نمی‌فرستد.
+     */
+    public static function pingHost(string $url): array
+    {
+        if (!function_exists('curl_init')) {
+            return ['ok' => false, 'detail' => 'cURL فعال نیست'];
+        }
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_NOBODY         => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+
+        // روی برخی هاست‌های اشتراکی بسته گواهی CA نصب نیست؛ یک‌بار بدون بررسی گواهی تلاش می‌کنیم
+        if ($err !== '' && self::isCertError($err)) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_NOBODY         => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 8,
+                CURLOPT_CONNECTTIMEOUT => 4,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0,
+            ]);
+            curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err2 = curl_error($ch);
+            curl_close($ch);
+            if ($err2 === '') {
+                return ['ok' => $code > 0, 'status' => $code, 'detail' => $code > 0 ? ('HTTP ' . $code . ' (بدون بررسی گواهی)') : 'بدون پاسخ'];
+            }
+            $err = $err2;
+        }
+        if ($err !== '') {
+            return ['ok' => false, 'status' => $code, 'detail' => $err];
+        }
+        return ['ok' => $code > 0, 'status' => $code, 'detail' => $code > 0 ? ('HTTP ' . $code) : 'بدون پاسخ'];
+    }
+
+    /**
+     * آیا خطای cURL مربوط به نبود/نامعتبر بودن بسته گواهی CA است؟
+     * (روی هاست‌های اشتراکی رایج است و ربطی به تنظیمات برنامه ندارد)
+     */
+    private static function isCertError(string $error): bool
+    {
+        $e = strtolower($error);
+        return str_contains($e, 'certificate')
+            || str_contains($e, 'ca bundle')
+            || str_contains($e, 'ssl certificate problem')
+            || str_contains($e, 'unable to get local issuer');
+    }
+
+    /**
+     * توصیه متنی برای صفحه تنظیمات: چه چیزی برای «صدا → متن» لازم است
+     */
+    public static function sttSetupAdvice(bool $hasGroq, bool $hasGemini, array $reach): string
+    {
+        $parts = [];
+        if ($hasGroq) {
+            $parts[] = '✅ کلید Groq تنظیم شده است — دقیق‌ترین و سریع‌ترین حالت تشخیص گفتار فارسی فعال است.';
+        } elseif ($hasGemini) {
+            $parts[] = '✅ کلید Gemini تنظیم شده است — صدا مستقیم توسط Gemini پردازش می‌شود.';
+        } else {
+            $parts[] = '⚠️ هیچ کلید رایگانی تنظیم نشده است.';
+            $poll = $reach['pollinations']['ok'] ?? false;
+            if ($poll) {
+                $parts[] = '🔁 سرور به Pollinations دسترسی دارد؛ صدا با Whisper رایگان و بدون کلید تبدیل می‌شود (کندتر از Groq).';
+            } else {
+                $parts[] = '❌ سرور به سرویس‌های بیرونی دسترسی ندارد؛ صدا را در مرورگر («تبدیل صدا به متن بدون کلید») یا با تایپ متن پردازش کنید.';
+            }
+            $parts[] = '💡 برای فارسی دقیق‌تر، یک کلید رایگان از console.groq.com بگیرید (بدون کارت بانکی).';
+        }
+        if (!($reach['groq']['ok'] ?? false) && $hasGroq) {
+            $parts[] = '⚠️ کلید Groq ثبت شده اما سرور به api.groq.com دسترسی ندارد: ' . ($reach['groq']['detail'] ?? '—');
+        }
+        return implode(' ', $parts);
+    }
+
+    /**
+     * پیام خطای شفاف و راهنما وقتی هیچ موتور تشخیص گفتاری متن تولید نکرد
+     * (به‌جای پیام عمومی مبهم، علت هر لایه را نشان می‌دهد)
+     */
+    public static function sttFailureMessage(array $notes = []): string
+    {
+        $technical = [];
+        foreach ($notes as $note) {
+            if (stripos($note, 'ناموفق') !== false) {
+                $technical[] = $note;
+            }
+        }
+        $msg = '🎧 صدا به‌درستی ضبط شد، اما هیچ موتور تشخیص گفتاری نتوانست آن را به متن تبدیل کند.';
+        $msg .= "\n\nچه کاری انجام دهیم؟";
+        $msg .= "\n۱) در کادر «متن فرمان صوتی» همان جمله‌ای را که گفتید تایپ کنید (سریع‌ترین راه).";
+        $msg .= "\n۲) یک کلید رایگان Groq از console.groq.com بگیرید و در «تنظیمات ← کلید رایگان Groq» وارد کنید — دقیق‌ترین گزینه برای فارسی.";
+        $msg .= "\n۳) یا کلید رایگان Gemini از aistudio.google.com در تنظیمات وارد کنید (صدا را مستقیم می‌فهمد).";
+        $msg .= "\n۴) مطمئن شوید سرور به اینترنت دسترسی دارد (اگر پشت فایروال/هاست محلی هستید، سرویس‌های ابری در دسترس نیستند).";
+        if (!empty($technical)) {
+            $msg .= "\n\nجزئیات فنی: " . implode(' | ', array_slice($technical, 0, 4));
+        }
+        return $msg;
+    }
+
+    /**
+     * تشخیص گفتار فارسی با Pollinations Whisper — کاملاً رایگان و بدون کلید API
+     * از endpoint سازگار با OpenAI استفاده می‌کند: /v1/audio/transcriptions
+     */
+    private static function transcribeWithPollinationsWhisper(string $filePath, string $mimeType): string
+    {
+        if (!function_exists('curl_init')) {
+            throw new RuntimeException('افزونه cURL روی سرور فعال نیست.');
+        }
+        if (!is_file($filePath)) {
+            throw new RuntimeException('فایل صوتی روی سرور پیدا نشد.');
+        }
+
+        $endpoints = [
+            'https://gen.pollinations.ai/v1/audio/transcriptions',
+            'https://text.pollinations.ai/v1/audio/transcriptions',
+        ];
+        $lastError = '';
+
+        foreach ($endpoints as $url) {
+            foreach (['openai/whisper-large-v3', 'whisper-large-v3', 'whisper-1'] as $model) {
+                $postFields = [
+                    'file'            => new CURLFile($filePath, $mimeType ?: 'audio/webm', basename($filePath)),
+                    'model'           => $model,
+                    'language'        => 'fa',
+                    'response_format' => 'json',
+                    'temperature'     => '0',
+                ];
+
+                $raw = false;
+                $code = 0;
+                $err = '';
+                foreach ([true, false] as $verify) {
+                    $postFields['file'] = new CURLFile($filePath, $mimeType ?: 'audio/webm', basename($filePath));
+                    $ch = curl_init($url);
+                    curl_setopt_array($ch, [
+                        CURLOPT_POST           => true,
+                        CURLOPT_POSTFIELDS     => $postFields,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_TIMEOUT        => 45,
+                        CURLOPT_CONNECTTIMEOUT => 10,
+                        CURLOPT_FOLLOWLOCATION => true,
+                        CURLOPT_USERAGENT      => 'HambkarPlus/2.0',
+                        CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+                        CURLOPT_SSL_VERIFYPEER => $verify,
+                        CURLOPT_SSL_VERIFYHOST => $verify ? 2 : 0,
+                    ]);
+                    $raw  = curl_exec($ch);
+                    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    $err  = curl_error($ch);
+                    curl_close($ch);
+                    if (!($raw === false && self::isCertError($err))) {
+                        break;
+                    }
+                }
+
+                if ($raw === false) {
+                    $lastError = $err !== '' ? $err : 'اتصال برقرار نشد';
+                    continue; // دامنه بعدی را امتحان کن
+                }
+                if ($code >= 400) {
+                    $lastError = "HTTP {$code}";
+                    continue;
+                }
+
+                $text = '';
+                $decoded = json_decode((string) $raw, true);
+                if (is_array($decoded)) {
+                    $text = trim((string) ($decoded['text'] ?? $decoded['transcription'] ?? ''));
+                }
+                if ($text === '') {
+                    $plain = trim((string) $raw);
+                    if ($plain !== '' && !str_starts_with($plain, '{') && !str_starts_with($plain, '<')) {
+                        $text = $plain;
+                    }
+                }
+                if ($text !== '') {
+                    return $text;
+                }
+                $lastError = 'پاسخ خالی از سرویس';
+            }
+        }
+
+        throw new RuntimeException($lastError !== '' ? $lastError : 'سرویس تشخیص گفتار پاسخ نداد');
+    }
+
+    /**
      * تبدیل فایل صوتی فارسی به متن با Groq Whisper Large v3 Turbo (رایگان)
      */
     private static function transcribeWithGroqWhisper(string $filePath, string $mimeType, string $apiKey): string
@@ -216,21 +443,31 @@ PROMPT;
             'temperature'     => '0',
         ];
 
-        $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $postFields,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 25,
-            CURLOPT_CONNECTTIMEOUT => 6,
-            CURLOPT_HTTPHEADER     => [
-                'Authorization: Bearer ' . $apiKey,
-            ],
-        ]);
-        $raw  = curl_exec($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err  = curl_error($ch);
-        curl_close($ch);
+        $raw = false;
+        $code = 0;
+        $err = '';
+        // دو تلاش: اول با بررسی کامل گواهی، و اگر بسته CA روی هاست نبود، بدون بررسی گواهی
+        foreach ([true, false] as $verify) {
+            $postFields['file'] = new CURLFile($filePath, $mimeType ?: 'audio/webm', basename($filePath));
+            $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
+            curl_setopt_array($ch, [
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $postFields,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 40,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $apiKey],
+                CURLOPT_SSL_VERIFYPEER => $verify,
+                CURLOPT_SSL_VERIFYHOST => $verify ? 2 : 0,
+            ]);
+            $raw  = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            if (!($raw === false && self::isCertError($err))) {
+                break; // خطای گواهی بود؟ یک‌بار دیگر بدون بررسی تلاش کن
+            }
+        }
 
         if ($raw === false || $code >= 400) {
             throw new RuntimeException($err !== '' ? $err : "HTTP {$code}");

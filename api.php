@@ -1347,6 +1347,36 @@ try {
             break;
         }
 
+        case 'ai_status': {
+            require_admin();
+            $groqKey = trim(get_setting('groq_api_key', GROQ_API_KEY));
+            $geminiKey = trim(get_setting('gemini_api_key', GEMINI_API_KEY));
+            $checks = [
+                'curl'      => function_exists('curl_init'),
+                'https'     => (bool) ini_get('allow_url_fopen') || function_exists('curl_init'),
+                'upload_max_filesize' => ini_get('upload_max_filesize'),
+                'post_max_size'       => ini_get('post_max_size'),
+            ];
+            $reach = [];
+            foreach ([
+                'groq' => 'https://api.groq.com/openai/v1/models',
+                'pollinations' => 'https://gen.pollinations.ai/v1/models',
+                'gemini' => 'https://generativelanguage.googleapis.com/',
+            ] as $name => $url) {
+                $reach[$name] = AiService::pingHost($url);
+            }
+            json_success(['ai' => [
+                'provider' => get_setting('ai_provider', AI_PROVIDER),
+                'groq_key_set' => $groqKey !== '',
+                'gemini_key_set' => $geminiKey !== '',
+                'keyless_stt' => 'Pollinations Whisper + Puter.js (مرورگر)',
+                'checks' => $checks,
+                'reachability' => $reach,
+                'advice' => AiService::sttSetupAdvice($groqKey !== '', $geminiKey !== '', $reach),
+            ]]);
+            break;
+        }
+
         case 'db_status': {
             require_admin();
             $status = Database::statusInfo();

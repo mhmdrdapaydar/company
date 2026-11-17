@@ -28,6 +28,9 @@
     previewTasks: [],
     previewMeta: null,
     pendingAutoCreate: false,
+    lastSpeechError: '',
+    browserSpeechGotResult: false,
+    puterLoading: null,
 
     tpl: function () { return ''; },
 
@@ -68,6 +71,7 @@
         '    <div class="toolbar" style="margin:12px 0">' +
         '      <label class="btn btn-sm" style="cursor:pointer">📁 آپلود فایل صوتی<input type="file" id="voiceFileInput" accept="audio/*" class="hidden"></label>' +
         '      <button type="button" class="btn btn-sm" id="btnTranscribeTry">📝 تشخیص گفتار مرورگر</button>' +
+        '      <button type="button" class="btn btn-sm" id="btnBrowserStt" title="تبدیل فایل صوتی به متن بدون هیچ کلید، مستقیماً در مرورگر">🎧 تبدیل صدا به متن بدون کلید</button>' +
         '      <span class="small muted">یا متن فرمان را بنویسید:</span>' +
         '    </div>' +
         '    <label class="field">' +
@@ -137,6 +141,7 @@
       document.getElementById('btnVoiceReset').addEventListener('click', function () { self.reset(); });
       document.getElementById('voiceFileInput').addEventListener('change', function (e) { self.useUploadedFile(e.target.files[0]); });
       document.getElementById('btnTranscribeTry').addEventListener('click', function () { self.startBrowserSpeech(true); });
+      document.getElementById('btnBrowserStt').addEventListener('click', function () { self.transcribeAudioOnly(); });
       document.getElementById('voicePreviewList').addEventListener('click', function (e) {
         var rm = e.target.closest('[data-remove]');
         if (rm) {
@@ -191,6 +196,9 @@
       this.previewTasks = [];
       this.previewMeta = null;
       this.seconds = 0;
+      this.lastSpeechError = '';
+      this.browserSpeechGotResult = false;
+      var hintReset = document.getElementById('speechHint');
       var hint = document.getElementById('speechHint');
       var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       hint.textContent = SR
@@ -243,15 +251,63 @@
     },
 
     stopRecord: function (silent) {
+      var self = this;
       if (this.recorder && this.recorder.state !== 'inactive') {
         try { this.recorder.stop(); } catch (e) {}
       }
-      this.stopBrowserSpeech();
+
+      // ⚠️ نکته مهم: اگر تشخیص گفتار مرورگر را «فوراً» قطع کنیم، Chrome فرصت نمی‌کند
+      // آخرین نتیجهٔ نهایی (final) را بفرستد و متن خالی می‌ماند. پس چند لحظه صبر می‌کنیم.
+      if (this.speechStopTimer) { clearTimeout(this.speechStopTimer); this.speechStopTimer = null; }
+      if (silent || !this.recActive) {
+        this.stopBrowserSpeech();
+      } else {
+        // به کاربر بازخورد بده و منتظر نتیجه نهایی بمان
+        var status = document.getElementById('recStatus');
+        if (status) status.textContent = '⏳ در حال نهایی‌سازی متن گفتار...';
+        try { if (this.recognition) this.recognition.stop(); } catch (e) {}
+        this.speechStopTimer = setTimeout(function () {
+          self.speechStopTimer = null;
+          self.stopBrowserSpeech();
+          self.finalizeTranscript();
+        }, 1400);
+      }
+
       this.stopTimer();
       this.stopWaveform();
       this.recording = false;
       this.setRecordingUI(false);
       if (silent) this.stopStream();
+    },
+
+    /**
+     * جمع‌بندی متن نهایی: هر چیزی که مرورگر تشخیص داده را در کادر متن می‌نویسد
+     * تا کاربر بتواند قبل از پردازش ببیند/ویرایش کند.
+     */
+    finalizeTranscript: function () {
+      var box = document.getElementById('voiceTranscript');
+      if (!box) return;
+      var text = (box.value || '').trim();
+      if (text === '' && this.finalTranscript) {
+        text = this.finalTranscript.trim();
+        box.value = text;
+      }
+      var status = document.getElementById('recStatus');
+      if (status) status.textContent = '✅ ضبط پایان یافت. حالا «پردازش هوشمند» را بزنید.';
+      if (text !== '') {
+        this.browserSpeechGotResult = true;
+        var hint = document.getElementById('speechHint');
+        if (hint) hint.textContent = '✅ متن گفتار نوشته شد. اگر ناقص است، آن را اصلاح کنید و سپس «پردازش هوشمند» را بزنید.';
+      } else {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var h2 = document.getElementById('speechHint');
+        if (h2) {
+          h2.textContent = SR
+            ? 'ℹ️ مرورگر متنی برنگرداند' + (this.lastSpeechError ? ' (' + this.lastSpeechError + ')' : '') +
+              '؛ می‌توانید دوباره بگویید، متن را تایپ کنید یا دکمه «تبدیل صدا به متن بدون کلید» را بزنید.'
+            : 'ℹ️ این مرورگر تشخیص گفتار ندارد؛ دکمه «تبدیل صدا به متن بدون کلید» یا تایپ متن را استفاده کنید.';
+        }
+      }
     },
 
     finishRecording: function () {
@@ -266,7 +322,11 @@
       document.getElementById('audioPlayWrap').classList.remove('hidden');
       this.stopStream();
       document.getElementById('recStatus').textContent = '✅ ضبط پایان یافت. حالا «پردازش هوشمند» را بزنید.';
-      self.finalTranscript = (document.getElementById('voiceTranscript').value || '') + (this.finalTranscript && !document.getElementById('voiceTranscript').value ? this.finalTranscript : '');
+      // متن کادر را دست‌نخورده نگه می‌داریم؛ فقط اگر خالی بود از نتیجه مرورگر پر می‌کنیم
+      var box = document.getElementById('voiceTranscript');
+      if (box && box.value.trim() === '' && this.finalTranscript) {
+        box.value = this.finalTranscript.trim();
+      }
       drawIdleWave(document.getElementById('waveCanvas'));
     },
 
@@ -361,26 +421,50 @@
             else interim += txt;
           }
           self.interimTranscript = interim;
+          if ((self.finalTranscript + interim).trim() !== '') self.browserSpeechGotResult = true;
           var box = document.getElementById('voiceTranscript');
           box.value = (self.finalTranscript + ' ' + interim).trim();
         };
         rec.onerror = function (e) {
+          self.lastSpeechError = e && e.error ? String(e.error) : 'unknown';
+          var hint = document.getElementById('speechHint');
           if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            if (hint) hint.textContent = '⚠️ مرورگر اجازه تشخیص گفتار نداد؛ صدا برای پردازش سروری ارسال می‌شود.';
             if (manual) toast('اجازه استفاده از میکروفن برای تشخیص گفتار داده نشد.', 'error');
-          } else if (e.error === 'network' && manual) {
-            toast('سرویس تشخیص گفتار مرورگر در دسترس نیست؛ صدا برای پردازش سروری ارسال خواهد شد.', 'info');
+          } else if (e.error === 'network') {
+            if (hint) hint.textContent = '⚠️ سرویس گفتار مرورگر در دسترس نیست؛ صدا در سرور پردازش می‌شود.';
+            if (manual) toast('سرویس تشخیص گفتار مرورگر در دسترس نیست؛ صدا برای پردازش سروری ارسال خواهد شد.', 'info');
+          } else if (e.error === 'language-not-supported') {
+            if (hint) hint.textContent = '⚠️ این مرورگر از فارسی (fa-IR) پشتیبانی نمی‌کند؛ صدا در سرور پردازش می‌شود.';
+          } else if (e.error === 'no-speech') {
+            if (hint) hint.textContent = '⚠️ صدایی شنیده نشد؛ دوباره واضح‌تر صحبت کنید.';
+          } else if (e.error === 'audio-capture') {
+            if (hint) hint.textContent = '⚠️ میکروفن در دسترس نیست یا توسط برنامه دیگری اشغال شده است.';
+          } else if (hint) {
+            hint.textContent = '⚠️ تشخیص گفتار مرورگر خطا داد (' + e.error + ')؛ صدا در سرور پردازش می‌شود.';
           }
           self.recActive = false;
         };
-        rec.onend = function () { self.recActive = false; if (self.recording) { try { rec.start(); } catch (e) {} } };
+        rec.onend = function () {
+          self.recActive = false;
+          // فقط در حین ضبط فعال، موتور را زنده نگه دار (نه بعد از توقف کاربر)
+          if (self.recording && !self.speechStopTimer) {
+            try { rec.start(); } catch (e) {}
+          }
+        };
         rec.start();
         this.recognition = rec;
         this.recActive = true;
       } catch (e) { this.recActive = false; }
     },
     stopBrowserSpeech: function () {
+      if (this.speechStopTimer) { clearTimeout(this.speechStopTimer); this.speechStopTimer = null; }
       if (this.recognition) {
-        try { this.recognition.onend = null; this.recognition.stop(); } catch (e) {}
+        try {
+          this.recognition.onend = null;
+          this.recognition.onresult = null;
+          this.recognition.abort ? this.recognition.abort() : this.recognition.stop();
+        } catch (e) {}
         this.recognition = null;
       }
       this.recActive = false;
@@ -403,7 +487,113 @@
       document.querySelector('#voiceFileInput').value = '';
     },
 
+    /* ---------- تشخیص گفتار بدون کلید در مرورگر (Puter.js) ---------- */
+    /**
+     * بارگذاری تنبل اسکریپت Puter.js — سرویس رایگان و بدون کلید برای تبدیل صدا به متن.
+     * اگر اسکریپت قبلاً بارگذاری شده باشد، همان را برمی‌گرداند.
+     */
+    loadPuter: function () {
+      var self = this;
+      if (window.puter && window.puter.ai && typeof window.puter.ai.speech2txt === 'function') {
+        return Promise.resolve(window.puter);
+      }
+      if (this.puterLoading) return this.puterLoading;
+      this.puterLoading = new Promise(function (resolve, reject) {
+        var existing = document.querySelector('script[data-puter-sdk]');
+        var finish = function () {
+          if (window.puter && window.puter.ai && typeof window.puter.ai.speech2txt === 'function') resolve(window.puter);
+          else reject(new Error('Puter SDK بارگذاری نشد'));
+        };
+        if (existing) {
+          existing.addEventListener('load', finish);
+          existing.addEventListener('error', function () { reject(new Error('خطا در بارگذاری Puter')); });
+          if (window.puter) finish();
+          return;
+        }
+        var sc = document.createElement('script');
+        sc.src = 'https://js.puter.com/v2/';
+        sc.async = true;
+        sc.setAttribute('data-puter-sdk', '1');
+        var timer = setTimeout(function () { reject(new Error('زمان بارگذاری Puter به پایان رسید')); }, 12000);
+        sc.onload = function () { clearTimeout(timer); finish(); };
+        sc.onerror = function () { clearTimeout(timer); reject(new Error('مرورگر نتوانست به سرویس Puter دسترسی پیدا کند')); };
+        document.head.appendChild(sc);
+      });
+      this.puterLoading.catch(function () { self.puterLoading = null; });
+      return this.puterLoading;
+    },
+
+    /**
+     * تلاش برای تبدیل صدا به متن در مرورگر بدون هیچ کلیدی (Puter.js).
+     * فقط وقتی اجرا می‌شود که سرور متنی برنگردانده باشد.
+     */
+    transcribeInBrowser: async function () {
+      if (!this.audioBlob) throw new Error('فایل صوتی برای تشخیص گفتار وجود ندارد');
+      var puter = await this.loadPuter();
+      var result;
+      try {
+        result = await puter.ai.speech2txt(this.audioBlob, { model: 'whisper-1', language: 'fa' });
+      } catch (e) {
+        // برخی نسخه‌ها گزینه language را نمی‌پذیرند؛ بدون آن تلاش دوباره
+        result = await puter.ai.speech2txt(this.audioBlob);
+      }
+      var text = '';
+      if (typeof result === 'string') text = result;
+      else if (result && typeof result.text === 'string') text = result.text;
+      else if (result && typeof result.transcript === 'string') text = result.transcript;
+      text = (text || '').trim();
+      if (!text) throw new Error('سرویس مرورگری متنی تولید نکرد');
+      return text;
+    },
+
+    /**
+     * پیام راهنمای دقیق وقتی صدا ضبط شده اما متنی به دست نیامده است.
+     */
+    sttHelpMessage: function (serverMessage) {
+      var lines = [];
+      lines.push('🎧 صدای شما درست ضبط شد، اما هنوز به متن تبدیل نشد.');
+      if (this.lastSpeechError) {
+        lines.push('دلیل تشخیص گفتار مرورگر: ' + this.lastSpeechError);
+      }
+      if (serverMessage) lines.push('پاسخ سرور: ' + String(serverMessage).replace(/^🎧\s*/, '').split('\n')[0]);
+      lines.push('');
+      lines.push('برای ادامه یکی از این راه‌ها:');
+      lines.push('۱) متن جمله را در کادر «متن فرمان صوتی» بنویسید و دوباره «پردازش هوشمند» را بزنید (فوری).');
+      lines.push('۲) کلید رایگان Groq (console.groq.com) را در تنظیمات وارد کنید — دقیق‌ترین حالت فارسی.');
+      lines.push('۳) اگر سرور اینترنت ندارد، از دکمه «📝 تشخیص گفتار در مرورگر» استفاده کنید.');
+      return lines.join('\n');
+    },
+
     /* ---------- پردازش سروری ---------- */
+    /**
+     * تبدیل صدا به متن «فقط» و نوشتن در کادر متن، بدون ساخت تسک.
+     * بدون هیچ کلید API و مستقیماً در مرورگر انجام می‌شود.
+     */
+    transcribeAudioOnly: function () {
+      var self = this;
+      if (!this.audioBlob) {
+        toast('ابتدا صدا را ضبط کنید یا فایل صوتی بدهید.', 'error');
+        return;
+      }
+      this.showProcessing('🎧 در حال تبدیل صدا به متن در مرورگر (بدون کلید)...');
+      this.transcribeInBrowser()
+        .then(function (text) {
+          self.hideProcessing();
+          document.getElementById('voiceTranscript').value = text;
+          self.finalTranscript = text;
+          var hint = document.getElementById('speechHint');
+          if (hint) hint.textContent = '✅ متن از صدا استخراج شد. حالا «پردازش هوشمند» را بزنید تا تسک ساخته شود.';
+          toast('متن گفتار استخراج شد. برای ساخت تسک «پردازش هوشمند» را بزنید.', 'success');
+          var ta = document.getElementById('voiceTranscript');
+          ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        })
+        .catch(function (e) {
+          self.hideProcessing();
+          toast('تبدیل صدا در مرورگر ممکن نشد: ' + (e && e.message ? e.message : 'خطای نامشخص') +
+            '\nمی‌توانید متن جمله را دستی در کادر بنویسید یا در تنظیمات کلید رایگان Groq وارد کنید.', 'error', 12000);
+        });
+    },
+
     process: function (forceText) {
       var self = this;
       var transcript = document.getElementById('voiceTranscript').value.trim();
@@ -411,37 +601,96 @@
         toast('لطفاً صدا ضبط کنید، فایل صوتی بدهید یا متن فرمان را بنویسید.', 'error');
         return;
       }
-      document.getElementById('voiceProcessing').classList.remove('hidden');
-      document.getElementById('voicePreviewWrap').classList.add('hidden');
-      document.getElementById('btnVoiceProcess').disabled = true;
+      this.showProcessing('در حال پردازش صدا با هوش مصنوعی رایگان...');
       var fd = new FormData();
       fd.append('transcript', transcript);
       fd.append('voice_duration_sec', String(this.seconds || 0));
       if (this.audioBlob && !forceText) fd.append('audio', this.audioBlob, 'voice.' + ((this.audioBlob.type && this.audioBlob.type.indexOf('mp4') >= 0) ? 'm4a' : 'webm'));
 
-      this.api('voice_preview', fd, { form: true }).then(function (res) {
-        document.getElementById('voiceProcessing').classList.add('hidden');
-        document.getElementById('btnVoiceProcess').disabled = false;
-        self.previewTasks = res.tasks || [];
-        self.previewMeta = {
-          transcript: res.transcript || transcript,
-          provider: res.provider || '',
-          voice_file: res.voice_file || null,
-          voice_duration_sec: res.voice_duration_sec || self.seconds || 0
-        };
-        document.getElementById('voiceTranscript').value = self.previewMeta.transcript;
-        document.getElementById('voiceProvider').textContent = '🤖 ' + (res.provider || 'موتور هوشمند فارسی');
-        document.getElementById('voicePreviewWrap').classList.remove('hidden');
-        self.renderPreview();
-        toast(res.message || 'پردازش انجام شد. پیش‌نمایش را بررسی کنید.', 'success');
-        if (document.getElementById('voiceAutoCreate').checked) {
-          self.confirm();
-        }
-      }).catch(function (err) {
-        document.getElementById('voiceProcessing').classList.add('hidden');
-        document.getElementById('btnVoiceProcess').disabled = false;
-        if (err && err.message) toast(err.message, 'error');
-      });
+      this.api('voice_preview', fd, { form: true })
+        .then(function (res) {
+          self.finishPreview(res, transcript);
+        })
+        .catch(function (err) {
+          var msg = (err && err.message) ? String(err.message) : 'پردازش صوتی انجام نشد.';
+          // اگر صدا داریم و علت «متنی پیدا نشد» بود، یک‌بار در مرورگر (بدون کلید) تلاش می‌کنیم
+          var noTranscript = /تشخیص گفتار|تبدیل به متن|موتور تشخیص/.test(msg);
+          if (!forceText && self.audioBlob && noTranscript) {
+            self.showProcessing('🔎 سرور متنی پیدا نکرد؛ تلاش دوم در مرورگر (بدون کلید)...');
+            return self.transcribeInBrowser().then(function (text) {
+              if (!text) throw new Error('خالی');
+              var fd2 = new FormData();
+              fd2.append('transcript', text);
+              fd2.append('voice_duration_sec', String(self.seconds || 0));
+              document.getElementById('voiceTranscript').value = text;
+              return self.api('voice_preview', fd2, { form: true }).then(function (res) {
+                self.finishPreview(res, text, ' + تشخیص گفتار مرورگر (Puter)');
+              });
+            }).catch(function () {
+              throw new Error(self.sttHelpMessage(msg));
+            });
+          }
+          throw err;
+        })
+        .catch(function (err) {
+          self.hideProcessing();
+          var message = (err && err.message) ? err.message : 'پردازش صوتی انجام نشد.';
+          toast(message, 'error', 12000);
+          // متن کامل خطا را برای کپی/خواندن دقیق نمایش بده
+          self.showTranscriptHelp(message);
+        });
+    },
+
+    showProcessing: function (text) {
+      var box = document.getElementById('voiceProcessing');
+      if (box) {
+        box.innerHTML = '<div class="spinner"></div>' + esc(text || 'در حال پردازش...');
+        box.classList.remove('hidden');
+      }
+      document.getElementById('voicePreviewWrap').classList.add('hidden');
+      var btn = document.getElementById('btnVoiceProcess');
+      if (btn) btn.disabled = true;
+    },
+
+    hideProcessing: function () {
+      var box = document.getElementById('voiceProcessing');
+      if (box) box.classList.add('hidden');
+      var btn = document.getElementById('btnVoiceProcess');
+      if (btn) btn.disabled = false;
+    },
+
+    showTranscriptHelp: function (message) {
+      var hint = document.getElementById('speechHint');
+      if (hint) {
+        hint.innerHTML = '<div class="alert alert-error small" style="margin-top:8px;white-space:pre-line;text-align:right;line-height:1.9">' + esc(message) + '</div>';
+      }
+      // پخش‌کننده صدا را نشان بده تا کاربر مطمئن شود ضبط سالم است
+      if (this.audioUrl) document.getElementById('audioPlayWrap').classList.remove('hidden');
+    },
+
+    finishPreview: function (res, fallbackTranscript, suffix) {
+      var self = this;
+      this.hideProcessing();
+      this.previewTasks = res.tasks || [];
+      this.previewMeta = {
+        transcript: res.transcript || fallbackTranscript || '',
+        provider: (res.provider || '') + (suffix || ''),
+        voice_file: res.voice_file || null,
+        voice_duration_sec: res.voice_duration_sec || this.seconds || 0
+      };
+      document.getElementById('voiceTranscript').value = this.previewMeta.transcript;
+      document.getElementById('voiceProvider').textContent = '🤖 ' + this.previewMeta.provider;
+      var hint = document.getElementById('speechHint');
+      if (hint) hint.textContent = this.browserSpeechGotResult
+        ? '🎧 تشخیص گفتار مرورگر فعال است؛ متن هم‌زمان با صحبت شما نوشته می‌شود.'
+        : 'ℹ️ صدا در سرور پردازش شد. برای دقت بیشتر روی صداهای طولانی، کلید رایگان Groq را در تنظیمات وارد کنید.';
+      document.getElementById('voicePreviewWrap').classList.remove('hidden');
+      this.renderPreview();
+      toast(res.message || 'پردازش انجام شد. پیش‌نمایش را بررسی کنید.', 'success');
+      if (document.getElementById('voiceAutoCreate').checked) {
+        this.confirm();
+      }
+      self.lastSpeechError = '';
     },
 
     renderPreview: function () {

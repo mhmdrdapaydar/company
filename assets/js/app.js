@@ -28,14 +28,19 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function toast(msg, type) {
+  /**
+   * نمایش اعلان کوتاه. برای پیام‌های چندخطی و طولانی (مثل راهنمای خطای تشخیص گفتار)
+   * پارامتر duration را زیاد کنید تا فرصت خواندن داشته باشد.
+   */
+  function toast(msg, type, duration) {
     if (!msg) return;
     var wrap = $('#toastWrap');
     var el = document.createElement('div');
     el.className = 'toast' + (type === 'error' ? ' error' : type === 'info' ? ' info' : '');
+    el.style.whiteSpace = 'pre-line';
     el.innerHTML = (type === 'error' ? '⚠️ ' : type === 'info' ? 'ℹ️ ' : '✅ ') + esc(msg);
     wrap.appendChild(el);
-    setTimeout(function () { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(function () { el.remove(); }, 320); }, 4200);
+    setTimeout(function () { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(function () { el.remove(); }, 320); }, duration || 4200);
   }
 
   // کنش‌های فقط‌خواندنی: همیشه با GET ارسال می‌شوند تا CSRF لازم نباشد
@@ -43,7 +48,7 @@
     me: 1, bootstrap: 1, dashboard_stats: 1, tasks_list: 1, task_get: 1, users_list: 1,
     departments_list: 1, projects_list: 1, attendance_today: 1, attendance_list: 1,
     attendance_team: 1, leaves_list: 1, announcements_list: 1, notifications_list: 1,
-    activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1
+    activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1, ai_status: 1
   };
 
   /** درخواست به API — پشتیبانی از JSON و FormData */
@@ -1417,7 +1422,49 @@
             (exists ? '<span class="badge badge-done">آماده</span>' : '<span class="badge badge-urgent">ایجاد می‌شود</span>') + '</div>';
         }).join('');
     }).catch(function (err) { $('#dbStatusBox').innerHTML = emptyStr(err.message); });
+    renderAiStatus();
   }
+
+  /**
+   * نمایش وضعیت سرویس تشخیص گفتار (STT) و دسترسی سرور به سرویس‌های رایگان
+   */
+  function renderAiStatus() {
+    var box = $('#aiStatusBox');
+    if (!box) return;
+    box.innerHTML = '<div class="loading"><div class="spinner"></div>در حال بررسی...</div>';
+    api('ai_status').then(function (res) {
+      var ai = res.ai || {};
+      var reach = ai.reachability || {};
+      var keys = [
+        { label: 'Groq Whisper (دقیق‌ترین، نیازمند کلید رایگان)', on: ai.groq_key_set, net: reach.groq },
+        { label: 'Gemini 2.5 Flash (نیازمند کلید رایگان)', on: ai.gemini_key_set, net: reach.gemini },
+        { label: 'Pollinations Whisper (بدون کلید)', on: true, net: reach.pollinations }
+      ];
+      var rows = keys.map(function (k) {
+        var net = k.net || {};
+        var state = k.on
+          ? (net.ok ? '<span class="badge badge-done">آماده</span>' : '<span class="badge badge-urgent">شبکه مسدود</span>')
+          : '<span class="badge">کلید ندارد</span>';
+        return '<div class="db-table-row"><span>🎙️</span><span class="grow">' + esc(k.label) +
+          (net.detail ? ' <span class="small muted" dir="ltr">— ' + esc(net.detail) + '</span>' : '') +
+          '</span>' + state + '</div>';
+      }).join('');
+      var checks = ai.checks || {};
+      box.innerHTML = rows +
+        '<div class="small" style="margin-top:8px;line-height:1.9">' + esc(ai.advice || '') + '</div>' +
+        '<div class="small muted" dir="ltr" style="margin-top:6px">cURL: ' + (checks.curl ? '✓' : '✗') +
+        ' · upload_max_filesize: ' + esc(checks.upload_max_filesize || '—') +
+        ' · post_max_size: ' + esc(checks.post_max_size || '—') + '</div>';
+    }).catch(function (err) {
+      box.innerHTML = '<div class="small" style="color:var(--danger)">' + esc(err.message || 'بررسی ناموفق') + '</div>';
+    });
+  }
+
+  function initAiCheckButton() {
+    var btn = $('#btnAiCheck');
+    if (btn) btn.addEventListener('click', renderAiStatus);
+  }
+
   function initSettingsSave() {
     var btn = $('#btnSaveSettings');
     if (!btn) return;
@@ -1519,6 +1566,7 @@
     initCalendar();
     initProfile();
     initSettingsSave();
+    initAiCheckButton();
     initShortcuts();
     initGlobalButtons();
 

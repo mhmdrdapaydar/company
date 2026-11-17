@@ -434,6 +434,17 @@ $theme       = 'light';
             </label>
             <label class="field"><span>کلید رایگان Groq (اختیاری)</span><input type="text" id="stGroqKey" dir="ltr" placeholder="gsk_..."></label>
             <label class="field"><span>کلید رایگان Gemini (اختیاری)</span><input type="text" id="stGeminiKey" dir="ltr" placeholder="AIza..."></label>
+            <div class="small muted" style="margin:-4px 0 10px;line-height:1.9">
+              🎧 تشخیص گفتار فارسی سه لایه دارد: کلید رایگان Groq (دقیق‌ترین) ← کلید Gemini ← Whisper رایگان بدون کلید (Pollinations).
+              اگر هیچ‌کدام در دسترس نبود، دکمه «تبدیل صدا به متن بدون کلید» داخل پنجره ضبط، صدا را در مرورگر تبدیل می‌کند.
+            </div>
+            <div class="card" style="box-shadow:none;border:1px solid var(--border);margin-bottom:12px">
+              <div class="toolbar" style="justify-content:space-between;margin-bottom:6px">
+                <strong style="font-size:13px">🧪 وضعیت سرویس تشخیص گفتار</strong>
+                <button type="button" class="btn btn-sm" id="btnAiCheck">بررسی دوباره</button>
+              </div>
+              <div id="aiStatusBox" class="small"><div class="loading"><div class="spinner"></div>در حال بررسی...</div></div>
+            </div>
             <div class="checkline"><input type="checkbox" id="stSelfTask"><label for="stSelfTask">کارمندان بتوانند برای خودشان تسک ثبت کنند</label></div>
             <div class="checkline"><input type="checkbox" id="stPeerTask"><label for="stPeerTask">کارمندان بتوانند به همکاران تسک محول کنند</label></div>
             <button class="btn btn-primary" id="btnSaveSettings">💾 ذخیره تنظیمات</button>
