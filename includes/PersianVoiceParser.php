@@ -256,7 +256,15 @@ final class PersianVoiceParser
         }
 
         // ۹. استخراج موضوع و عنوان تمیز تسک
-        $title = self::extractCleanTitle($text, $working);
+        // همهٔ نام‌های کارمندانی که در متن آمده‌اند (برای حذف از عنوان)
+        $knownNames = [];
+        foreach ($users as $u) {
+            $fn = trim((string) ($u['full_name'] ?? ''));
+            if ($fn !== '' && mb_strpos($text, $fn) !== false) {
+                $knownNames[] = $fn;
+            }
+        }
+        $title = self::extractCleanTitle($text, $working, $knownNames);
 
         // ۱۰. تشخیص دسته‌بندی و برچسب‌های هوشمند
         [$category, $tags] = self::inferCategoryAndTags($title . ' ' . $text);
@@ -447,6 +455,40 @@ final class PersianVoiceParser
             return ['gregorian' => $g, 'reason' => 'پایان ماه جاری', 'matched_phrases' => [$m[1]]];
         }
 
+        // «آخرین روز کاری این ماه» / «آخرین روز کاری ماه» → آخرین روز غیرتعطیل (جمعه نیست)
+        if (preg_match('/((?:تا|برای)?\s*(?:آخرین|اخرین)\s+روز\s+(?:کاری|اداری)(?:\s+(?:همین\s+|این\s+)?ماه)?)/u', $text, $m)) {
+            $lastD = Jalali::daysInMonth($curJy, $curJm);
+            $g = Jalali::jalaliToGregorianString($curJy, $curJm, $lastD);
+            // عقب بردن تا اولین روزی که جمعه نباشد
+            $guard = 0;
+            while (Jalali::weekdayIndex(strtotime($g . ' 12:00:00')) === 6 && $guard < 7) {
+                $g = date('Y-m-d', strtotime($g . ' -1 day'));
+                $guard++;
+            }
+            return [
+                'gregorian'       => $g,
+                'reason'          => 'آخرین روز کاری ماه (' . Jalali::toHuman($g, true, true) . ')',
+                'matched_phrases' => [$m[1]],
+            ];
+        }
+
+        // «آخرین روز ماه» / «آخر ماه» بدون قید «کاری»
+        if (preg_match('/((?:تا|برای)?\s*(?:آخرین|اخرین)\s+روز\s+(?:همین\s+|این\s+)?ماه)/u', $text, $m)) {
+            $lastD = Jalali::daysInMonth($curJy, $curJm);
+            $g = Jalali::jalaliToGregorianString($curJy, $curJm, $lastD);
+            return ['gregorian' => $g, 'reason' => 'آخرین روز ماه جاری', 'matched_phrases' => [$m[1]]];
+        }
+
+        // «آخر هفتهٔ همین ماه» / «آخر همین هفته»
+        if (preg_match('/((?:تا|برای)?\s*(?:آخرین|اخرین)\s+هفته)/u', $text, $m)) {
+            $diff = (5 - $todayW + 7) % 7;
+            if ($diff === 0) {
+                $diff = 7;
+            }
+            $g = date('Y-m-d', $todayTs + $diff * 86400);
+            return ['gregorian' => $g, 'reason' => 'آخرین هفته (پنجشنبه)', 'matched_phrases' => [$m[1]]];
+        }
+
         if (preg_match('/((?:برای\s+|تا\s+)?(?:وسط|اواسط)\s+(?:همین\s+|این\s+)?ماه)/u', $text, $m)) {
             $ny = $curJy;
             $nm = $curJm;
@@ -528,6 +570,59 @@ final class PersianVoiceParser
             }
         }
 
+        // ۱.۵ شکل تفریقی فارسی: «یک ربع به پنج عصر»، «بیست دقیقه به ده»، «ده به پنج»
+        //     یعنی ۱۵/۲۰/... دقیقه مانده به ساعتِ گفته‌شده.
+        //     ⚠️ باید قبل از الگوی «ساعت X» بررسی شود، وگرنه «به پنج» نادیده گرفته می‌شود.
+        $hwAll = [
+            'بیست و سه' => 23, 'بیست و دو' => 22, 'بیست و یک' => 21, 'بیست' => 20,
+            'نوزده' => 19, 'هجده' => 18, 'هیجده' => 18, 'هفده' => 17, 'شانزده' => 16, 'شونزده' => 16,
+            'پانزده' => 15, 'پونزده' => 15, 'چهارده' => 14, 'سیزده' => 13, 'دوازده' => 12,
+            'یازده' => 11, 'ده' => 10, 'نه' => 9, 'هشت' => 8, 'هفت' => 7,
+            'شش' => 6, 'شیش' => 6, 'پنج' => 5, 'چهار' => 4, 'سه' => 3, 'دو' => 2, 'یک' => 1,
+        ];
+        $hwAllPat = implode('|', array_keys($hwAll));
+        $numPat   = '\d{1,2}|' . $hwAllPat;
+        $subtractPatterns = [
+            // «یک ربع به پنج» / «ربع به پنج»
+            '/((?:ساعت\s+)?(?:یک\s+)?ربع\s+(?:به|به‌)\s+(' . $numPat . ')(?:\s*(صبح|ظهر|بعد[\s\x{200C}]*از[\s\x{200C}]*ظهر|عصر|شب|بامداد))?)/u' => 15,
+            // «بیست دقیقه به ده» / «ده دقیقه به هفت»
+            '/((?:ساعت\s+)?(' . $numPat . ')\s*دقیقه\s+(?:به|به‌)\s+(' . $numPat . ')(?:\s*(صبح|ظهر|بعد[\s\x{200C}]*از[\s\x{200C}]*ظهر|عصر|شب|بامداد))?)/u' => null,
+            // «ده به پنج» (بدون «دقیقه»/«ربع») — فقط وقتی «ساعت» یا واژه زمانی همراه باشد
+            '/((?:ساعت\s+)(?:(\d{1,2}|' . $hwAllPat . '))\s+(?:به|به‌)\s+(' . $numPat . ')(?:\s*(صبح|ظهر|بعد[\s\x{200C}]*از[\s\x{200C}]*ظهر|عصر|شب|بامداد))?)/u' => null,
+        ];
+        foreach ($subtractPatterns as $rx => $fixedMin) {
+            if (!preg_match($rx, $text, $m)) {
+                continue;
+            }
+            // تعیین «دقیقه مانده» و «ساعت هدف»
+            if ($fixedMin === 15) {
+                $minsBefore = 15;
+                $targetRaw  = $m[2] ?? '';
+                $period     = $m[3] ?? '';
+            } else {
+                // الگوی «X دقیقه به Y» → گروه‌ها: 1=کل، 2=X، 3=Y، 4=دوره
+                // الگوی «ساعت X به Y»   → گروه‌ها: 1=کل، 2=X، 3=Y، 4=دوره
+                $minsBefore = self::faNumberToInt((string) ($m[2] ?? ''));
+                $targetRaw  = $m[3] ?? '';
+                $period     = $m[4] ?? '';
+            }
+            $target = self::faNumberToInt((string) $targetRaw);
+            if ($target === null || $minsBefore === null || $minsBefore < 0 || $minsBefore > 59) {
+                continue;
+            }
+            $h = self::adjustHourForPeriod($target, $period);
+            $total = $h * 60 - $minsBefore;
+            if ($total < 0) {
+                $total += 24 * 60;
+            }
+            if ($total >= 0 && $total < 24 * 60) {
+                return [
+                    'time'            => sprintf('%02d:%02d', intdiv($total, 60), $total % 60),
+                    'matched_phrases' => [$m[1]],
+                ];
+            }
+        }
+
         // ۲. ساعت عددی همراه نیم/ربع/دقیقه: «ساعت ۱۰ و نیم صبح»، «ساعت ۳ عصر»، «ساعت ۸ و ربع»
         if (preg_match('/((?:راس\s+|رأس\s+|تا\s+)?ساعت\s+(\d{1,2})(?:\s+و\s+(نیم|ربع|\d{1,2}\s*دقیقه))?(?:\s*(صبح|ظهر|بعد[\s\x{200C}]*از[\s\x{200C}]*ظهر|عصر|شب|بامداد))?)/u', $text, $m)) {
             $h = (int) $m[2];
@@ -584,6 +679,33 @@ final class PersianVoiceParser
         }
 
         return ['time' => null, 'matched_phrases' => []];
+    }
+
+    /**
+     * تبدیل عدد فارسی (رقمی یا حروفی) به عدد صحیح
+     * «۵» / «پنج» / «بیست» / «بیست و سه» → عدد
+     */
+    private static function faNumberToInt(string $raw): ?int
+    {
+        $v = trim(str_replace(['‌', '\x{200C}'], [' ', ' '], $raw));
+        $v = preg_replace('/\s+/u', ' ', $v) ?? $v;
+        if ($v === '') {
+            return null;
+        }
+        $digits = en_digits($v);
+        if (preg_match('/^\d{1,3}$/', $digits)) {
+            return (int) $digits;
+        }
+        // حروفی: مستقیم از جدول، سپس نسخهٔ بدون نیم‌فاصله
+        if (isset(self::WORD_NUMBERS[$v])) {
+            return self::WORD_NUMBERS[$v];
+        }
+        foreach (self::WORD_NUMBERS as $k => $num) {
+            if (str_replace(' ', '', $k) === str_replace(' ', '', $v)) {
+                return $num;
+            }
+        }
+        return null;
     }
 
     private static function adjustHourForPeriod(int $hour, string $period): int
@@ -816,7 +938,7 @@ final class PersianVoiceParser
     /**
      * استخراج عنوان تمیز و دقیق موضوع تسک
      */
-    private static function extractCleanTitle(string $originalText, string $strippedText): string
+    private static function extractCleanTitle(string $originalText, string $strippedText, array $knownNames = []): string
     {
         // حالت ۱: کاربر صراحتاً گفته «با موضوع ...» یا «با عنوان ...»
         if (preg_match('/(?:با\s+موضوع|با\s+عنوان|تحت\s+عنوان|به\s+نام)\s*[«"\']?(.+?)[»"\']?(?:\s+(?:برای|به|در\s+روز|در\s+تاریخ|ساعت|با\s+اولویت|رو\s+ثبت|را\s+ثبت|ثبت\s+کن|ایجاد\s+کن|بذار|بزار|بساز|اضافه\s+کن)|$)/u', $originalText, $m)) {
@@ -830,6 +952,25 @@ final class PersianVoiceParser
 
         // حالت ۲: پاکسازی افعال دستوری و عبارات اضافه از جمله باقی‌مانده
         $t = $strippedText;
+
+        // حذف نام کارمندی که به‌عنوان «مسئول» تشخیص داده شده اما در عنوان مانده
+        // («هماهنگی با سارا محمدی و علی رضایی برای دمو» → «هماهنگی برای دمو»)
+        if (!empty($knownNames)) {
+            // نام همهٔ کارمندانی که در متن آمده‌اند حذف می‌شود (نه فقط مسئول اصلی)
+            // «هماهنگی با سارا محمدی و علی رضایی برای دمو» → «هماهنگی برای دمو»
+            foreach ($knownNames as $nm) {
+                $nm = trim((string) $nm);
+                if ($nm === '') {
+                    continue;
+                }
+                $full = preg_quote($nm, '/');
+                $t = preg_replace('/\s*(?:و|با|از|برای|به)?\s*' . $full . '\s*/u', ' ', $t) ?? $t;
+            }
+            $t = preg_replace('/\s+/u', ' ', trim($t)) ?? $t;
+            // پاک‌سازی «و»/«با» سرگردان در ابتدا/انتهای عبارت
+            $t = preg_replace('/^(?:و|با)\s+/u', '', $t) ?? $t;
+            $t = preg_replace('/\s+(?:و|با)\s*$/u', '', $t) ?? $t;
+        }
 
         // حذف عبارات زمانی نسبی که در فیلد تاریخ ثبت شده‌اند ولی از متن حذف نشده‌اند
         // (مثل «هفته آینده»، «ماه بعد»، «آخر هفته»، «دو هفته دیگر»)
@@ -857,6 +998,10 @@ final class PersianVoiceParser
             '/^(?:با\s+موضوع|با\s+عنوان|موضوعش|موضوع)\s+/u',
             '/^(?:باید|لازمه|قراره)(?:\s+که)?\s+/u',
             '/^(?:صبح|عصر|ظهر|شب|اول\s+صبح|آخر\s+شب)\s+/u',
+            // «ظهر» چسبیده به انتهای عنوان («... سرور ظهر»)
+            '/\s+(?:صبح|عصر|ظهر|شب)\s*$/u',
+            // حذف «این کار» / «این کار رو» که موضوع واقعی نیست
+            '/^(?:این\s+)?(?:کار|تسک|وظیفه)(?:\s+(?:رو|را))?\s+/u',
         ];
         for ($i = 0; $i < 3; $i++) {
             foreach ($leadingPatterns as $rx) {
