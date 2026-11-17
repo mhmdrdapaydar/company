@@ -43,7 +43,9 @@
     setTimeout(function () { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(function () { el.remove(); }, 320); }, duration || 4200);
   }
 
-  // کنش‌های فقط‌خواندنی: همیشه با GET ارسال می‌شوند تا CSRF لازم نباشد
+  // کنش‌های فقط‌خواندنی: با GET ارسال می‌شوند تا CSRF لازم نباشد.
+  // قاعده مهم: هر کنشی که در این فهرست نباشد «نوشتنی» است و همیشه با POST می‌رود،
+  // حتی اگر هیچ داده‌ای نداشته باشد (مثل «خواندن همه اعلان‌ها» یا «ثبت خروج»).
   var READ_ACTIONS = {
     me: 1, bootstrap: 1, dashboard_stats: 1, tasks_list: 1, task_get: 1, users_list: 1,
     departments_list: 1, projects_list: 1, attendance_today: 1, attendance_list: 1,
@@ -62,11 +64,12 @@
       fd.append('csrf_token', window.APP.csrf);
       init.method = 'POST';
       init.body = fd;
-    } else if (!isRead && payload && Object.keys(payload).length) {
+    } else if (!isRead) {
+      // کنش نوشتنی: همیشه POST می‌شود؛ اگر داده‌ای نبود، فقط توکن امنیتی ارسال می‌شود
       init.method = 'POST';
       init.headers['Content-Type'] = 'application/json';
       init.headers['X-CSRF-Token'] = window.APP.csrf;
-      init.body = JSON.stringify(payload);
+      init.body = JSON.stringify(Object.assign({ csrf_token: window.APP.csrf }, payload || {}));
     } else {
       var qs = new URLSearchParams();
       if (payload) Object.keys(payload).forEach(function (k) {

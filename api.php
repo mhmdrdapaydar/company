@@ -20,7 +20,7 @@ $data = request_data();
 if ($method !== 'GET') {
     $csrf = (string) ($data['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
     if (!verify_csrf($csrf)) {
-        json_error('توکن امنیتی نامعتبر است. صفحه را تازه‌سازی کنید.', 419);
+        json_error('نشست یا توکن امنیتی شما منقضی شده است. صفحه را تازه‌سازی کنید (F5) و دوباره تلاش کنید.', 419);
     }
 }
 
@@ -423,7 +423,7 @@ try {
         }
 
         case 'task_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $taskId = create_task_record($data, 'manual', null, null, null);
             $t = fetch_task($taskId);
             json_success(['task' => task_detail_payload($t)], 'تسک با موفقیت ایجاد شد.');
@@ -431,7 +431,7 @@ try {
         }
 
         case 'task_update': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['id'] ?? 0));
             $now = now_datetime();
             $sets = []; $params = [];
@@ -483,7 +483,7 @@ try {
         }
 
         case 'task_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['id'] ?? 0));
             if (!($isAdmin || (int) $t['created_by'] === $uid)) json_error('فقط سازنده تسک یا مدیر شرکت می‌تواند آن را حذف کند.', 403);
             Database::execute('DELETE FROM tasks WHERE id = ?', [(int) $t['id']]);
@@ -493,7 +493,7 @@ try {
         }
 
         case 'subtask_add': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['task_id'] ?? 0));
             $title = clean_line($data['title'] ?? '', 255);
             if ($title === '') json_error('عنوان زیرتسک را وارد کنید.');
@@ -507,7 +507,7 @@ try {
         }
 
         case 'subtask_toggle': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $sub = Database::fetchOne('SELECT * FROM task_subtasks WHERE id = ?', [(int) ($data['id'] ?? 0)]);
             if (!$sub) json_error('زیرتسک یافت نشد.', 404);
             $t = get_task_or_fail((int) $sub['task_id']);
@@ -528,7 +528,7 @@ try {
         }
 
         case 'subtask_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $sub = Database::fetchOne('SELECT * FROM task_subtasks WHERE id = ?', [(int) ($data['id'] ?? 0)]);
             if (!$sub) json_error('زیرتسک یافت نشد.', 404);
             get_task_or_fail((int) $sub['task_id']);
@@ -538,7 +538,7 @@ try {
         }
 
         case 'comment_add': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['task_id'] ?? 0));
             $body = clean_text($data['body'] ?? '', 5000);
             $voiceFile = null; $voiceDur = 0;
@@ -561,7 +561,7 @@ try {
         }
 
         case 'attachment_upload': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['task_id'] ?? 0));
             if (empty($_FILES['file']) || ($_FILES['file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                 json_error('فایل پیوست دریافت نشد.');
@@ -577,7 +577,7 @@ try {
         }
 
         case 'attachment_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $att = Database::fetchOne('SELECT * FROM task_attachments WHERE id = ?', [(int) ($data['id'] ?? 0)]);
             if (!$att) json_error('پیوست یافت نشد.', 404);
             get_task_or_fail((int) $att['task_id']);
@@ -589,7 +589,7 @@ try {
         }
 
         case 'timer_start': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['task_id'] ?? 0));
             $running = Database::fetchOne('SELECT id FROM task_time_logs WHERE task_id = ? AND ended_at IS NULL LIMIT 1', [(int) $t['id']]);
             if ($running) json_error('تایمر این تسک در حال اجراست.');
@@ -605,7 +605,7 @@ try {
         }
 
         case 'timer_stop': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $t = get_task_or_fail((int) ($data['task_id'] ?? 0));
             $running = Database::fetchOne('SELECT * FROM task_time_logs WHERE task_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1', [(int) $t['id']]);
             if (!$running) json_error('تایمر فعالی برای این تسک وجود ندارد.');
@@ -620,7 +620,7 @@ try {
         }
 
         case 'voice_preview': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $transcript = clean_text($data['transcript'] ?? '', 8000);
             $savedVoice = null;
             $voiceFileName = null;
@@ -650,7 +650,7 @@ try {
         }
 
         case 'voice_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $tasksJson = (string) ($data['tasks'] ?? '');
             $decoded = json_decode($tasksJson, true);
             if (!is_array($decoded) || empty($decoded)) {
@@ -683,7 +683,7 @@ try {
         }
 
         case 'voice_suggest_subtasks': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $title = clean_line($data['title'] ?? '', 255);
             $category = clean_line($data['category'] ?? '', 80);
             if ($title === '') json_error('عنوان تسک را وارد کنید.');
@@ -715,7 +715,7 @@ try {
         }
 
         case 'user_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $fullName = clean_line($data['full_name'] ?? '', 191);
             $username = clean_line($data['username'] ?? '', 100);
@@ -749,7 +749,7 @@ try {
         }
 
         case 'user_update': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $targetId = (int) ($data['id'] ?? 0);
             $target = Database::fetchOne('SELECT * FROM users WHERE id = ?', [$targetId]);
@@ -788,7 +788,7 @@ try {
         }
 
         case 'user_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_admin();
             $targetId = (int) ($data['id'] ?? 0);
             if ($targetId === $uid) json_error('نمی‌توانید حساب خودتان را حذف کنید.');
@@ -817,7 +817,7 @@ try {
         }
 
         case 'department_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $name = clean_line($data['name'] ?? '', 150);
             if ($name === '') json_error('نام واحد سازمانی را وارد کنید.');
@@ -832,7 +832,7 @@ try {
         }
 
         case 'department_update': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
             if (!Database::fetchOne('SELECT id FROM departments WHERE id = ?', [$id])) json_error('واحد یافت نشد.', 404);
@@ -849,7 +849,7 @@ try {
         }
 
         case 'department_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
             Database::execute('DELETE FROM departments WHERE id = ?', [$id]);
@@ -881,7 +881,7 @@ try {
         }
 
         case 'project_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $name = clean_line($data['name'] ?? '', 191);
             if ($name === '') json_error('نام پروژه را وارد کنید.');
@@ -906,7 +906,7 @@ try {
         }
 
         case 'project_update': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
             if (!Database::fetchOne('SELECT id FROM projects WHERE id = ?', [$id])) json_error('پروژه یافت نشد.', 404);
@@ -930,7 +930,7 @@ try {
         }
 
         case 'project_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
             Database::execute('DELETE FROM projects WHERE id = ?', [$id]);
@@ -956,7 +956,7 @@ try {
         }
 
         case 'attendance_clock_in': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $today = today_date();
             $exists = Database::fetchOne('SELECT id FROM attendance WHERE user_id = ? AND work_date = ? LIMIT 1', [$uid, $today]);
             if ($exists) json_error('امروز قبلاً ساعت ورود ثبت شده است.');
@@ -972,7 +972,7 @@ try {
         }
 
         case 'attendance_manual': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $targetId = $isManager && !empty($data['user_id']) ? (int) $data['user_id'] : $uid;
             if ($targetId !== $uid && !$isManager) json_error('مجوز ثبت حضور برای سایر کارمندان را ندارید.', 403);
             if (!Database::fetchOne('SELECT id FROM users WHERE id = ?', [$targetId])) json_error('کارمند یافت نشد.', 404);
@@ -1008,7 +1008,7 @@ try {
         }
 
         case 'attendance_clock_out': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $today = today_date();
             $att = Database::fetchOne('SELECT * FROM attendance WHERE user_id = ? AND work_date = ? LIMIT 1', [$uid, $today]);
             if (!$att) json_error('ابتدا ساعت ورود را ثبت کنید.');
@@ -1109,7 +1109,7 @@ try {
         }
 
         case 'leave_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $type = strtolower(clean_line($data['leave_type'] ?? 'daily', 20));
             if (!in_array($type, ['daily', 'hourly', 'sick', 'mission'], true)) $type = 'daily';
             $start = parse_date_input($data['start_date'] ?? null);
@@ -1134,7 +1134,7 @@ try {
         }
 
         case 'leave_review': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
             $status = strtolower(clean_line($data['status'] ?? '', 20));
@@ -1171,7 +1171,7 @@ try {
         }
 
         case 'announcement_create': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $title = clean_line($data['title'] ?? '', 220);
             $body = clean_text($data['body'] ?? '', 8000);
@@ -1188,7 +1188,7 @@ try {
         }
 
         case 'announcement_delete': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
             Database::execute('DELETE FROM announcements WHERE id = ?', [$id]);
@@ -1213,7 +1213,7 @@ try {
         }
 
         case 'notification_read': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $id = (int) ($data['id'] ?? 0);
             Database::execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [$id, $uid]);
             json_success([]);
@@ -1221,7 +1221,7 @@ try {
         }
 
         case 'notifications_read_all': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             Database::execute('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [$uid]);
             json_success([], 'همه اعلان‌ها خوانده شد.');
             break;
@@ -1282,7 +1282,7 @@ try {
         }
 
         case 'profile_update': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $sets = []; $params = [];
             if (isset($data['full_name'])) { $sets[] = 'full_name = ?'; $params[] = clean_line($data['full_name'], 191); }
             if (isset($data['email'])) { $sets[] = 'email = ?'; $params[] = clean_line($data['email'], 191); }
@@ -1297,7 +1297,7 @@ try {
         }
 
         case 'password_change': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $current = (string) ($data['current_password'] ?? '');
             $new = (string) ($data['new_password'] ?? '');
             $confirm = (string) ($data['new_password_confirm'] ?? '');
@@ -1328,7 +1328,7 @@ try {
         }
 
         case 'settings_save': {
-            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_admin();
             $allowed = ['company_name', 'company_slogan', 'work_start_time', 'work_end_time', 'allow_employee_self_task', 'allow_employee_peer_task', 'ai_provider', 'ai_auto_create', 'groq_api_key', 'gemini_api_key'];
             foreach ($allowed as $key) {
