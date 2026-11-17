@@ -23,6 +23,30 @@ function migrate_out(string $text, bool $isCli): void
     echo $isCli ? $text . PHP_EOL : '<div>' . e($text) . '</div>';
 }
 
+/**
+ * ترجمه خطاهای رایج PDO به پیام فارسی قابل‌فهم برای مدیر
+ */
+function migrate_friendly_error(Throwable $e): string
+{
+    $msg = $e->getMessage();
+    if (stripos($msg, 'server has gone away') !== false || stripos($msg, 'Connection refused') !== false
+        || stripos($msg, 'No such file or directory') !== false || stripos($msg, 'getaddrinfo') !== false) {
+        return 'سرور MySQL در دسترس نیست (' . DB_HOST . ':' . DB_PORT . '). '
+            . 'اگر روی XAMPP/Laragon کار می‌کنید، MySQL را از کنترل‌پنل روشن کنید. '
+            . 'روی هاست، هاست را از cPanel بگیرید (معمولاً localhost) و پورت را بررسی کنید.';
+    }
+    if (stripos($msg, 'Access denied') !== false || stripos($msg, '1045') !== false) {
+        return 'نام کاربری یا رمز عبور پایگاه داده نادرست است. مقدارهای DB_USER و DB_PASS را در فایل .env با cPanel مطابقت دهید.';
+    }
+    if (stripos($msg, 'Unknown database') !== false || stripos($msg, '1049') !== false) {
+        return 'دیتابیس «' . DB_NAME . '» وجود ندارد. آن را در cPanel/DirectAdmin بسازید یا نام دقیق را در DB_NAME بگذارید.';
+    }
+    if (stripos($msg, 'could not find driver') !== false) {
+        return 'افزونه pdo_mysql روی PHP فعال نیست. در php.ini خط extension=pdo_mysql را فعال و وب‌سرور را ری‌استارت کنید.';
+    }
+    return $msg;
+}
+
 /* ---------- بررسی‌های اولیه ---------- */
 $errors = [];
 if (!is_file($sourceFile)) {
@@ -146,7 +170,7 @@ if (!$isCli) {
                     $inserted++;
                 } catch (Throwable $e) {
                     $failed++;
-                    migrate_out('⚠️ خطا در ' . $table . ': ' . $e->getMessage(), $isCli);
+                    migrate_out('⚠️ خطا در ' . $table . ' (ردیف ' . (string) ($row['id'] ?? '?') . '): ' . $e->getMessage(), $isCli);
                 }
             }
             $pdoTarget->commit();
@@ -162,7 +186,11 @@ if (!$isCli) {
             migrate_out('حالا مقدار DB_DRIVER را در فایل .env روی mysql بگذارید تا پنل همیشه از MySQL استفاده کند.', $isCli);
         }
     } catch (Throwable $e) {
-        migrate_out('❌ خطا: ' . $e->getMessage(), $isCli);
+        migrate_out('❌ خطا: ' . migrate_friendly_error($e), $isCli);
+        migrate_out('جزئیات فنی: ' . $e->getMessage(), $isCli);
+        if ($isCli) {
+            migrate_out('راهنما: مقادیر .env را بررسی کنید و مطمئن شوید MySQL در حال اجراست.', $isCli);
+        }
     }
     echo '</div>';
     if (!$isCli) {
