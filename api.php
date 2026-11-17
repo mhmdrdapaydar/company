@@ -635,8 +635,14 @@ try {
 
         case 'timer_stop': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
-            $t = get_task_or_fail((int) ($data['task_id'] ?? 0));
-            $running = Database::fetchOne('SELECT * FROM task_time_logs WHERE task_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1', [(int) $t['id']]);
+            $taskId = (int) ($data['task_id'] ?? 0);
+            if ($taskId > 0) {
+                $t = get_task_or_fail($taskId);
+                $running = Database::fetchOne('SELECT * FROM task_time_logs WHERE task_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1', [(int) $t['id']]);
+            } else {
+                // بدون task_id: تایمر فعال همین کاربر (در هر تسکی) بسته می‌شود
+                $running = Database::fetchOne('SELECT * FROM task_time_logs WHERE user_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1', [$uid]);
+            }
             if (!$running) json_error('تایمر فعالی برای این تسک وجود ندارد.');
             $startTs = strtotime((string) $running['started_at']);
             $mins = max(1, (int) round((time() - ($startTs ?: time())) / 60));
@@ -1348,7 +1354,9 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
+            if ($id <= 0 || !Database::fetchOne('SELECT id FROM announcements WHERE id = ? LIMIT 1', [$id])) json_error('اطلاعیه موردنظر یافت نشد.', 404);
             Database::execute('DELETE FROM announcements WHERE id = ?', [$id]);
+            log_activity($uid, 'delete_announcement', 'announcement', $id, 'اطلاعیه حذف شد.');
             json_success([], 'اطلاعیه حذف شد.');
             break;
         }
