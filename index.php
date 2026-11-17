@@ -107,9 +107,6 @@ $theme       = 'light';
       <button class="icon-btn" id="btnNotifBell" title="اعلان‌ها" style="position:relative">
         🔔<span id="notifDot" class="badge badge-urgent" style="position:absolute;top:-6px;left:-6px;padding:0 6px;<?= $unread > 0 ? '' : 'display:none' ?>"><?= e(fa_digits($unread)) ?></span>
       </button>
-      <span class="net-pill" id="netPill" title="وضعیت اتصال — برنامه به‌صورت کامل روی سرور خودتان کار می‌کند">
-        <span class="dot"></span><span id="netPillText">آفلاین‌محور</span>
-      </span>
       <button class="icon-btn" id="btnTheme" title="تغییر تم">🌙</button>
       <a class="icon-btn" id="btnFullscreen" title="نمایش تمام‌صفحه" href="#" style="text-decoration:none">⛶</a>
     </header>
@@ -571,48 +568,6 @@ $theme       = 'light';
 <script src="assets/js/jalali.js?v=<?= e(APP_VERSION) ?>"></script>
 <script src="assets/js/offline-audio.js?v=<?= e(APP_VERSION) ?>"></script>
 <script src="assets/js/voice-ai.js?v=<?= e(APP_VERSION) ?>"></script>
-<script>
-(function () {
-  // نشانگر وضعیت اتصال: به api.php (سرور خودمان) وصل است یا نه.
-  // ⚠️ عمداً به هیچ سرویس بین‌المللی درخواست نمی‌فرستد.
-  var pill = document.getElementById('netPill');
-  var txt  = document.getElementById('netPillText');
-  if (!pill || !txt) return;
-
-  function setState(state) {
-    pill.className = 'net-pill ' + state;
-    if (state === 'online')  { txt.textContent = 'متصل'; }
-    if (state === 'offline') { txt.textContent = 'آفلاین'; }
-    if (state === 'local')   { txt.textContent = 'آفلاین‌محور'; }
-  }
-  function ping() {
-    // معیار واقعی «آفلاین» بودن، از نظر سرور است: اگر مدیر حالت آفلاین را
-    // روشن کرده یا سرور به اینترنت بین‌الملل دسترسی ندارد، موتور فارسی داخلی
-    // کار می‌کند و برنامه کامل و بدون تأخیر پاسخ می‌دهد.
-    var offlineMode = !!(window.APP && window.APP.offlineMode);
-    if (navigator.onLine === false) {
-      setState('offline');
-      pill.title = 'مرورگر آفلاین است؛ صفحه‌های بارگذاری‌شده کار می‌کنند. برای ادامه، اتصال به شبکهٔ داخلی/سرور را برگردانید.';
-      return;
-    }
-    if (offlineMode) {
-      setState('local');
-      pill.title = 'حالت آفلاین روشن است: هیچ سرویس بین‌المللی صدا زده نمی‌شود. تبدیل صدا به متن در مرورگر و پردازش فارسی روی سرور خودتان انجام می‌شود.';
-    } else {
-      setState('local');
-      pill.title = 'برنامه روی سرور داخلی اجرا می‌شود و برای کارهای اصلی به اینترنت بین‌الملل نیاز ندارد.';
-    }
-  }
-  window.addEventListener('online', ping);
-  window.addEventListener('offline', ping);
-  // window.APP در اسکریپت بعدی تعریف می‌شود؛ پس بعد از پایان پارس اجرا کن
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', ping);
-  } else {
-    setTimeout(ping, 0);
-  }
-})();
-</script>
 <script>
 window.APP = {
   csrf: <?= json_encode($csrf, JSON_UNESCAPED_UNICODE) ?>,

@@ -1449,6 +1449,14 @@ try {
             break;
         }
 
+        case 'notifications_unread': {
+            // سبک: فقط شمارش و آخرین شناسه — برای به‌روزرسانی زندهٔ نشانگر
+            $count = (int) Database::fetchValue('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0', [$uid], 0);
+            $lastId = (int) Database::fetchValue('SELECT COALESCE(MAX(id),0) FROM notifications WHERE user_id = ?', [$uid], 0);
+            json_success(['unread' => $count, 'last_id' => $lastId]);
+            break;
+        }
+
         case 'notification_read': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $id = (int) ($data['id'] ?? 0);

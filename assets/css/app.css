@@ -332,22 +332,6 @@ canvas.chart{width:100%;height:100%}
 
 /* ============ 👇 بهبود رابط گرافیکی (نسخهٔ ۲.۰.۹) ============ */
 
-/* نشانگر وضعیت اتصال در نوار بالا */
-.net-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;
-  font-size:11.5px;font-weight:800;border:1px solid var(--border);background:var(--card2);color:var(--muted);
-  white-space:nowrap;transition:.2s}
-.net-pill .dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;flex-shrink:0}
-.net-pill.local{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
-.net-pill.local .dot{background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.18)}
-.net-pill.online{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
-.net-pill.online .dot{background:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.18)}
-.net-pill.offline{background:#fff1f2;border-color:#fecdd3;color:#9f1239}
-.net-pill.offline .dot{background:#f43f5e;animation:netPulse 1.6s ease-in-out infinite}
-[data-theme="dark"] .net-pill.local{background:#052e22;border-color:#0f766e;color:#6ee7b7}
-[data-theme="dark"] .net-pill.online{background:#172554;border-color:#1e40af;color:#93c5fd}
-[data-theme="dark"] .net-pill.offline{background:#3f0d1c;border-color:#881337;color:#fda4af}
-@keyframes netPulse{0%,100%{opacity:1}50%{opacity:.35}}
-@media (max-width:1100px){.net-pill{display:none}}
 
 /* کارت‌های آماری: ژرفای بیشتر + ریز‌تعامل */
 .card{transition:box-shadow .2s,border-color .2s}
@@ -428,8 +412,190 @@ canvas.chart{width:100%;height:100%}
 .switch{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
 .switch input{opacity:0;width:0;height:0;position:absolute}
 .switch .slider{position:absolute;inset:0;cursor:pointer;background:#cbd5e1;border-radius:99px;transition:.22s}
-.switch .slider::before{content:"";position:absolute;height:20px;width:20px;right:3px;top:3px;background:#fff;
-  border-radius:50%;transition:.22s;box-shadow:0 1px 4px rgba(15,23,42,.25)}
+.switch .slider::before{content:"";position:absolute;height:20px;width:20px;
+  inset-inline-start:3px;top:3px;background:#fff;
+  border-radius:50%;transition:transform .22s;box-shadow:0 1px 4px rgba(15,23,42,.25)}
 .switch input:checked + .slider{background:linear-gradient(135deg,var(--primary),var(--primary2))}
+/* جهت‌آگاه: در RTL به چپ، در LTR به راست — همیشه «سمت مقابل» */
 .switch input:checked + .slider::before{transform:translateX(-20px)}
+[dir="ltr"] .switch input:checked + .slider::before{transform:translateX(20px)}
 .switch input:focus-visible + .slider{outline:2px solid var(--primary2);outline-offset:2px}
+
+/* ============ 🔔 اعلان زنده (کارت گوشهٔ صفحه) ============ */
+.notif-pop-wrap{
+  position:fixed; top:70px; left:20px; z-index:120;
+  display:flex; flex-direction:column; gap:10px;
+  width:min(340px, calc(100vw - 32px));
+  pointer-events:none;
+}
+.notif-pop{
+  position:relative;
+  width:100%;
+  pointer-events:auto;
+  background:var(--card); border:1px solid var(--border);
+  border-right:4px solid var(--primary);
+  border-radius:14px; padding:12px 14px;
+  box-shadow:0 12px 34px rgba(15,23,42,.18);
+  cursor:pointer;
+  opacity:0; transform:translateX(-18px) scale(.97);
+  transition:opacity .24s cubic-bezier(.2,.8,.3,1), transform .24s cubic-bezier(.2,.8,.3,1);
+}
+.notif-pop.in{opacity:1;transform:none}
+.notif-pop-head{display:flex;align-items:center;gap:7px;font-size:13.5px;margin-bottom:3px}
+.notif-pop-head strong{font-weight:800;line-height:1.5}
+.notif-pop-body{font-size:12.5px;color:var(--muted);line-height:1.75;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.notif-pop-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.notif-pop-close{padding:2px 8px!important;font-size:11px!important}
+.notif-pop:hover{border-right-color:var(--primary2)}
+[data-theme="dark"] .notif-pop{box-shadow:0 12px 34px rgba(0,0,0,.5)}
+@media (max-width:820px){
+  .notif-pop-wrap{top:auto;bottom:14px;left:14px;right:14px;width:auto}
+}
+@media (prefers-reduced-motion:reduce){
+  .notif-pop{transition:none;opacity:1;transform:none}
+}
+
+/* ============ 📱 واکنش‌گرا (ریسپانسیو کامل) — نسخهٔ ۲.۰.۱۱ ============ */
+
+/* --- عیب‌یابی سرریز افقی در همهٔ اندازه‌ها --- */
+/* جلوگیری از سرریز افقی بدون شکستن sticky (sticky با overflow روی html می‌شکند) */
+body{max-width:100%;overflow-x:clip}
+@supports not (overflow:clip){ body{overflow-x:hidden} }
+img,video,canvas,svg{max-width:100%;height:auto}
+audio.voice-player{max-width:100%}
+pre,code{overflow-wrap:anywhere}
+
+/* --- تبلت بزرگ / لپ‌تاپ کوچک --- */
+@media (max-width:1200px){
+  :root{--sidebar-w:236px}
+  .content{padding:18px}
+}
+
+/* --- تبلت --- */
+@media (max-width:1024px){
+  .grid-4{grid-template-columns:repeat(2,1fr)}
+  .grid-3{grid-template-columns:repeat(2,1fr)}
+  .kanban{grid-template-columns:repeat(2,1fr)}
+  .stat-num{font-size:22px}
+}
+
+/* --- تبلت عمودی / موبایل بزرگ --- */
+@media (max-width:820px){
+  /* نوار بالا: دو ردیفهٔ منظم به‌جای فشرده‌شدن */
+  .topbar{
+    flex-wrap:wrap; gap:8px; padding:10px 14px;
+    row-gap:8px;
+  }
+  .topbar h1{font-size:16px; flex:1 1 auto; min-width:0; order:1}
+  .topbar .spacer{display:none}
+  .menu-toggle{order:0; flex-shrink:0}
+  .clock-box{display:none}                 /* جای ساعت در ردیف دومِ داشبورد هست */
+  /* دکمه‌های اقدام: ردیف دوم، هم‌عرض */
+  #btnQuickVoice,#btnQuickTask{order:3; flex:1 1 0; justify-content:center; min-width:0}
+  #btnNotifBell{order:2; margin-inline-start:auto}
+  #btnTheme,#btnFullscreen{order:2}
+
+  /* مودال‌ها: تمام‌عرض و قابل اسکرول */
+  .modal-backdrop{padding:10px 8px; align-items:flex-start}
+  .modal{padding:18px 14px; border-radius:14px; max-height:calc(100vh - 20px); overflow-y:auto}
+  .modal-head h3{font-size:15px}
+  .drawer{width:100%; padding:16px 14px}
+
+  /* جدول‌ها: اسکرول افقی روان + چسبان‌بودن ستون اول */
+  .table-wrap{-webkit-overflow-scrolling:touch; overflow-x:auto}
+  .tbl{min-width:560px}
+  .tbl th,.tbl td{padding:9px 10px; font-size:12.5px}
+
+  /* کانبان: تک‌ستونه با اسکرول افقی مثل اپ موبایل */
+  .kanban{grid-template-columns:1fr; gap:12px}
+  .kanban-col{min-height:auto}
+
+  /* تقویم */
+  .cal-day{min-height:66px; padding:4px}
+  .cal-grid{gap:3px}
+
+  /* چیدمان فرم‌ها */
+  .grid-4,.grid-3,.grid-2,.form-row,.form-row3{grid-template-columns:1fr}
+  .kv{grid-template-columns:1fr; gap:2px 0}
+  .kv dt{margin-top:8px; font-size:11px}
+  .kv dd{margin-bottom:4px}
+
+  /* هدر کارت‌ها و تولبارها */
+  .toolbar{gap:8px}
+  .toolbar .search{min-width:100%; order:-1}
+  .toolbar select,.toolbar .btn{flex:1 1 auto; min-width:0}
+  .view-toggle{flex:1 1 100%}
+  .view-toggle button{flex:1}
+
+  /* آواتار و کارت آمار */
+  .stat-card{gap:10px}
+  .stat-ico{width:44px;height:44px;font-size:20px}
+  .stat-num{font-size:20px}
+  .card{padding:14px; border-radius:12px}
+  .card h3{font-size:14px}
+}
+
+/* --- موبایل --- */
+@media (max-width:600px){
+  body{font-size:13.5px}
+  .content{padding:12px 10px}
+
+  /* نوار بالا: فشرده‌تر */
+  .topbar{padding:9px 10px; gap:6px}
+  .topbar h1{font-size:14.5px}
+  #btnQuickVoice,#btnQuickTask{font-size:12px; padding:7px 8px; gap:4px}
+  .icon-btn{width:32px;height:32px;font-size:14px}
+
+  /* عنوان صفحه‌ها کوتاه‌تر */
+  .section-title{font-size:15px}
+
+  /* جدول‌ها: حالت کارتی‌شدن برای جداول کلیدی روی موبایل */
+  .tbl{min-width:520px}
+
+  /* تقویم: عدد روز کوچک‌تر، تسک‌ها به نقطه */
+  .cal-day{min-height:56px;padding:3px;font-size:10.5px}
+  .cal-task{display:none}
+  .cal-more{font-size:9.5px;margin:0}
+
+  /* دکمه‌های عمل در ردیف جدول */
+  .row-actions{flex-wrap:nowrap;gap:3px}
+  .row-actions .btn-sm{padding:4px 6px;font-size:11px}
+
+  /* مودال: تک‌ستونه */
+  .modal{padding:14px 12px}
+  .modal-lg{max-width:100%}
+  .form-row,.form-row3{grid-template-columns:1fr}
+
+  /* فهرست اعلان‌ها */
+  .notif-item{padding:10px;gap:8px}
+  .notif-item h5{font-size:12.5px}
+  .notif-item p{font-size:11.5px}
+
+  /* دراور تمام‌صفحه */
+  .drawer{padding:14px 12px}
+
+  /* لاگ فعالیت / توست */
+  .toast-wrap{left:10px;right:10px;bottom:10px;max-width:none}
+  .toast{font-size:12.5px}
+}
+
+/* --- موبایل خیلی کوچک --- */
+@media (max-width:380px){
+  .topbar h1{display:none}   /* عنوان صفحه در منو دیده می‌شود */
+  #btnQuickVoice,#btnQuickTask{font-size:11.5px}
+}
+
+/* --- حالت افقی موبایل (ارتفاع کم) --- */
+@media (max-height:520px) and (orientation:landscape){
+  .sidebar{overflow-y:auto}
+  .modal{max-height:calc(100vh - 12px)}
+  .notif-pop-wrap{top:8px;bottom:auto;max-height:calc(100vh - 16px);overflow-y:auto}
+}
+
+/* --- چاپ: حذف عناصر تعاملی --- */
+@media print{
+  .notif-pop-wrap,.btn-quick,#btnQuickVoice,#btnQuickTask{display:none!important}
+  .content{max-width:none;padding:0}
+  .card{box-shadow:none;border-color:#ddd;break-inside:avoid}
+}
