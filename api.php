@@ -273,6 +273,7 @@ try {
                     'work_end_time' => get_setting('work_end_time', '17:00'),
                     'ai_provider' => get_setting('ai_provider', AI_PROVIDER),
                     'ai_auto_create' => get_setting('ai_auto_create', '0'),
+                    'ai_offline_mode' => get_setting('ai_offline_mode', '0'),
                     'allow_employee_self_task' => get_setting('allow_employee_self_task', '1'),
                     'allow_employee_peer_task' => get_setting('allow_employee_peer_task', '0'),
                 ],
@@ -1533,6 +1534,7 @@ try {
                 'allow_employee_peer_task' => get_setting('allow_employee_peer_task', '0'),
                 'ai_provider' => get_setting('ai_provider', AI_PROVIDER),
                 'ai_auto_create' => get_setting('ai_auto_create', '0'),
+                'ai_offline_mode' => get_setting('ai_offline_mode', '0'),
                 // 🔒 کلیدهای API هرگز به‌صورت متن کامل به مرورگر فرستاده نمی‌شوند؛
                 // فقط ماسک (برای نمایش «ثبت شده») + وضعیت وجود کلید.
                 'groq_api_key' => mask_api_key(get_setting('groq_api_key', GROQ_API_KEY)),
@@ -1546,7 +1548,7 @@ try {
         case 'settings_save': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_admin();
-            $allowed = ['company_name', 'company_slogan', 'work_start_time', 'work_end_time', 'allow_employee_self_task', 'allow_employee_peer_task', 'ai_provider', 'ai_auto_create', 'groq_api_key', 'gemini_api_key'];
+            $allowed = ['company_name', 'company_slogan', 'work_start_time', 'work_end_time', 'allow_employee_self_task', 'allow_employee_peer_task', 'ai_provider', 'ai_auto_create', 'ai_offline_mode', 'groq_api_key', 'gemini_api_key'];
             foreach ($allowed as $key) {
                 if (array_key_exists($key, $data)) {
                     $val = (string) $data[$key];
@@ -1585,6 +1587,8 @@ try {
                 'upload_max_filesize' => ini_get('upload_max_filesize'),
                 'post_max_size'       => ini_get('post_max_size'),
             ];
+            $offlineMode = get_setting('ai_offline_mode', '0') === '1';
+            $intlReachable = AiService::internationalReachable();
             $reach = [];
             foreach ([
                 'groq' => 'https://api.groq.com/openai/v1/models',
@@ -1595,6 +1599,9 @@ try {
             }
             json_success(['ai' => [
                 'provider' => get_setting('ai_provider', AI_PROVIDER),
+                'offline_mode' => $offlineMode,
+                'international_reachable' => $intlReachable,
+                'engine' => ($offlineMode || !$intlReachable) ? 'local' : 'cloud',
                 'groq_key_set' => $groqKey !== '',
                 'gemini_key_set' => $geminiKey !== '',
                 'keyless_stt' => 'Pollinations Whisper + Puter.js (مرورگر)',

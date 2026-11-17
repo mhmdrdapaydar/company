@@ -107,6 +107,9 @@ $theme       = 'light';
       <button class="icon-btn" id="btnNotifBell" title="اعلان‌ها" style="position:relative">
         🔔<span id="notifDot" class="badge badge-urgent" style="position:absolute;top:-6px;left:-6px;padding:0 6px;<?= $unread > 0 ? '' : 'display:none' ?>"><?= e(fa_digits($unread)) ?></span>
       </button>
+      <span class="net-pill" id="netPill" title="وضعیت اتصال — برنامه به‌صورت کامل روی سرور خودتان کار می‌کند">
+        <span class="dot"></span><span id="netPillText">آفلاین‌محور</span>
+      </span>
       <button class="icon-btn" id="btnTheme" title="تغییر تم">🌙</button>
       <a class="icon-btn" id="btnFullscreen" title="نمایش تمام‌صفحه" href="#" style="text-decoration:none">⛶</a>
     </header>
@@ -427,6 +430,26 @@ $theme       = 'light';
               <label class="field"><span>ساعت شروع کار</span><input type="time" id="stWorkStart"></label>
               <label class="field"><span>ساعت پایان کار</span><input type="time" id="stWorkEnd"></label>
             </div>
+            <!-- 🔌 حالت آفلاین / سازگار با ایران -->
+            <div class="offline-card" id="offlineCard">
+              <div class="offline-head">
+                <span class="offline-ico">🇮🇷</span>
+                <div style="flex:1;min-width:180px">
+                  <strong style="font-size:13.5px">حالت آفلاین — بدون نیاز به سرویس‌های بین‌المللی</strong>
+                  <div class="small muted" style="line-height:1.85">
+                    با روشن بودن این گزینه، برنامه هیچ درخواستی به Groq / Gemini / Pollinations / Puter نمی‌فرستد.
+                    پردازش جملهٔ فارسی (تاریخ، ساعت، مسئول، عنوان) با موتور داخلی روی سرور خودتان انجام می‌شود
+                    و تبدیل صدا به متن با نمایشگر گفتار مرورگر (بدون ارسال صدا به بیرون).
+                  </div>
+                </div>
+                <label class="switch" title="روشن/خاموش">
+                  <input type="checkbox" id="stOfflineMode">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="small" id="offlineHint" style="margin-top:8px"></div>
+            </div>
+
             <h3 style="margin-top:16px">🎙️ تنظیمات هوش مصنوعی رایگان</h3>
             <label class="field"><span>سرویس پردازش صدا</span>
               <select id="stAiProvider">
@@ -544,10 +567,54 @@ $theme       = 'light';
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script src="assets/js/jalali.js?v=<?= e(APP_VERSION) ?>"></script>
+<script src="assets/js/offline-audio.js?v=<?= e(APP_VERSION) ?>"></script>
 <script src="assets/js/voice-ai.js?v=<?= e(APP_VERSION) ?>"></script>
+<script>
+(function () {
+  // نشانگر وضعیت اتصال: به api.php (سرور خودمان) وصل است یا نه.
+  // ⚠️ عمداً به هیچ سرویس بین‌المللی درخواست نمی‌فرستد.
+  var pill = document.getElementById('netPill');
+  var txt  = document.getElementById('netPillText');
+  if (!pill || !txt) return;
+
+  function setState(state) {
+    pill.className = 'net-pill ' + state;
+    if (state === 'online')  { txt.textContent = 'متصل'; }
+    if (state === 'offline') { txt.textContent = 'آفلاین'; }
+    if (state === 'local')   { txt.textContent = 'آفلاین‌محور'; }
+  }
+  function ping() {
+    // معیار واقعی «آفلاین» بودن، از نظر سرور است: اگر مدیر حالت آفلاین را
+    // روشن کرده یا سرور به اینترنت بین‌الملل دسترسی ندارد، موتور فارسی داخلی
+    // کار می‌کند و برنامه کامل و بدون تأخیر پاسخ می‌دهد.
+    var offlineMode = !!(window.APP && window.APP.offlineMode);
+    if (navigator.onLine === false) {
+      setState('offline');
+      pill.title = 'مرورگر آفلاین است؛ صفحه‌های بارگذاری‌شده کار می‌کنند. برای ادامه، اتصال به شبکهٔ داخلی/سرور را برگردانید.';
+      return;
+    }
+    if (offlineMode) {
+      setState('local');
+      pill.title = 'حالت آفلاین روشن است: هیچ سرویس بین‌المللی صدا زده نمی‌شود. تبدیل صدا به متن در مرورگر و پردازش فارسی روی سرور خودتان انجام می‌شود.';
+    } else {
+      setState('local');
+      pill.title = 'برنامه روی سرور داخلی اجرا می‌شود و برای کارهای اصلی به اینترنت بین‌الملل نیاز ندارد.';
+    }
+  }
+  window.addEventListener('online', ping);
+  window.addEventListener('offline', ping);
+  // window.APP در اسکریپت بعدی تعریف می‌شود؛ پس بعد از پایان پارس اجرا کن
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ping);
+  } else {
+    setTimeout(ping, 0);
+  }
+})();
+</script>
 <script>
 window.APP = {
   csrf: <?= json_encode($csrf, JSON_UNESCAPED_UNICODE) ?>,
+  offlineMode: <?= get_setting('ai_offline_mode', '0') === '1' ? 'true' : 'false' ?>,
   user: <?= json_encode([
       'id' => $uid,
       'full_name' => $user['full_name'],

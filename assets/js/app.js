@@ -1567,6 +1567,9 @@
       }
       $('#stSelfTask').checked = s.allow_employee_self_task === '1';
       $('#stPeerTask').checked = s.allow_employee_peer_task === '1';
+      var om = document.getElementById('stOfflineMode');
+      if (om) om.checked = String(s.ai_offline_mode) === '1';
+      updateOfflineHint();
     }).catch(function (err) { toast(err.message, 'error'); });
     api('db_status').then(function (res) {
       var db = res.db;
@@ -1614,6 +1617,14 @@
     api('ai_status').then(function (res) {
       var ai = res.ai || {};
       var reach = ai.reachability || {};
+      var engineRow = ai.engine === 'local'
+        ? '<div class="alert alert-success" style="margin-bottom:10px">🔌 <strong>موتور فعال: داخلی (آفلاین)</strong> — ' +
+          (ai.offline_mode
+            ? 'حالت آفلاین به‌صورت دستی روشن است.'
+            : 'سرور به سرویس‌های بین‌المللی دسترسی ندارد؛ برنامه خودکار از موتور فارسی داخلی استفاده می‌کند.') +
+          ' این حالت بدون اینترنت بین‌الملل کامل کار می‌کند.</div>'
+        : '<div class="alert alert-info" style="margin-bottom:10px">☁️ <strong>موتور فعال: ابری</strong> — ' +
+          'سرویس‌های رایگان بین‌المللی در دسترس هستند. اگر اینترنت قطع شود، برنامه خودکار به موتور داخلی برمی‌گردد.</div>';
       var keys = [
         { label: 'Groq Whisper (دقیق‌ترین، نیازمند کلید رایگان)', on: ai.groq_key_set, net: reach.groq },
         { label: 'Gemini 2.5 Flash (نیازمند کلید رایگان)', on: ai.gemini_key_set, net: reach.gemini },
@@ -1629,7 +1640,7 @@
           '</span>' + state + '</div>';
       }).join('');
       var checks = ai.checks || {};
-      box.innerHTML = rows +
+      box.innerHTML = engineRow + rows +
         '<div class="small" style="margin-top:8px;line-height:1.9">' + esc(ai.advice || '') + '</div>' +
         '<div class="small muted" dir="ltr" style="margin-top:6px">cURL: ' + (checks.curl ? '✓' : '✗') +
         ' · upload_max_filesize: ' + esc(checks.upload_max_filesize || '—') +
@@ -1639,9 +1650,26 @@
     });
   }
 
+  /** به‌روزرسانی متن راهنمای زیر کارت حالت آفلاین */
+  function updateOfflineHint() {
+    var hint = document.getElementById('offlineHint');
+    var el = document.getElementById('stOfflineMode');
+    if (!hint || !el) return;
+    if (el.checked) {
+      hint.className = 'small';
+      hint.style.color = 'var(--primary)';
+      hint.innerHTML = '✅ فعال است — هیچ ترافیک بین‌المللی ارسال نمی‌شود. همهٔ امکانات (تسک، کانبان، حضور، مرخصی، اعلان، تقویم و پردازش فارسی) کار می‌کند. برای صدا، متن را در کادر بنویسید؛ «تشخیص گفتار مرورگر» رایگان است ولی در کروم به اینترنت نیاز دارد.';
+    } else {
+      hint.className = 'small muted';
+      hint.innerHTML = 'ℹ️ خاموش است. اگر اینترنت بین‌الملل قطع شود، برنامه خودکار تشخیص می‌دهد و به موتور داخلی برمی‌گردد (بدون معطل‌شدن).';
+    }
+  }
+
   function initAiCheckButton() {
     var btn = $('#btnAiCheck');
     if (btn) btn.addEventListener('click', renderAiStatus);
+    var om = document.getElementById('stOfflineMode');
+    if (om) om.addEventListener('change', updateOfflineHint);
   }
 
   function initSettingsSave() {
@@ -1654,6 +1682,7 @@
         work_start_time: $('#stWorkStart').value,
         work_end_time: $('#stWorkEnd').value,
         ai_provider: $('#stAiProvider').value,
+        ai_offline_mode: (function () { var el = document.getElementById('stOfflineMode'); return el && el.checked ? '1' : '0'; })(),
         groq_api_key: $('#stGroqKey').value.trim(),
         gemini_api_key: $('#stGeminiKey').value.trim(),
         allow_employee_self_task: $('#stSelfTask').checked ? '1' : '0',

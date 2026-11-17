@@ -16,6 +16,7 @@
     audioBlob: null,
     audioUrl: null,
     analyser: null,
+    vad: null,
     audioCtx: null,
     rafId: null,
     timerId: null,
@@ -141,7 +142,17 @@
       document.getElementById('btnVoiceReset').addEventListener('click', function () { self.reset(); });
       document.getElementById('voiceFileInput').addEventListener('change', function (e) { self.useUploadedFile(e.target.files[0]); });
       document.getElementById('btnTranscribeTry').addEventListener('click', function () { self.startBrowserSpeech(true); });
-      document.getElementById('btnBrowserStt').addEventListener('click', function () { self.transcribeAudioOnly(); });
+      var sttBtn = document.getElementById('btnBrowserStt');
+      sttBtn.addEventListener('click', function () { self.transcribeAudioOnly(); });
+      // 🔌 در حالت آفلاین، دکمهٔ Puter (سرویس بین‌المللی) کار نمی‌کند؛ از قبل شفاف می‌کنیم
+      var allowIntl = false;
+      try { allowIntl = localStorage.getItem('hp_allow_international') === '1'; } catch (e) {}
+      var isOffline = !!(window.APP && window.APP.offlineMode);
+      if (isOffline || !allowIntl) {
+        sttBtn.title = 'این دکمه به سرویس بین‌المللی Puter نیاز دارد. برای کار بدون اینترنت، از «📝 تشخیص گفتار مرورگر» یا نوشتن متن استفاده کنید.';
+        sttBtn.style.opacity = '.6';
+        sttBtn.textContent = '🎧 تبدیل صدا به متن (نیازمند اینترنت)';
+      }
       document.getElementById('voicePreviewList').addEventListener('click', function (e) {
         var rm = e.target.closest('[data-remove]');
         if (rm) {
@@ -242,12 +253,54 @@
         self.startWaveform(stream);
         self.startTimer();
         self.startBrowserSpeech(false);
+        // 🎙️ تشخیص خودکار پایان گفتار (VAD) — بدون هیچ سرویس بیرونی
+        self.startAutoStopVad();
       }).catch(function (err) {
         var msg = 'دسترسی به میکروفن امکان‌پذیر نیست.';
         if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) msg = 'اجازه دسترسی به میکروفن داده نشد. از تنظیمات مرورگر اجازه دهید (سایت باید HTTPS باشد).';
         else if (err && err.name === 'NotFoundError') msg = 'میکروفنی روی این دستگاه پیدا نشد.';
         toast(msg, 'error');
       });
+    },
+
+    /**
+     * تشخیص خودکار سکوت: وقتی کاربر چند لحظه ساکت ماند، ضبط خودکار تمام می‌شود.
+     * کاملاً محلی (OfflineAudio) — در ایران با اینترنت قطع هم کار می‌کند.
+     */
+    startAutoStopVad: function () {
+      var self = this;
+      this.stopVad();
+      if (!window.OfflineAudio || !this.stream) return;
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {
+        if (!this.audioCtx || this.audioCtx.state === 'closed') this.audioCtx = new AC();
+      } catch (e) { return; }
+      try {
+        this.vad = window.OfflineAudio.createVad(this.audioCtx, this.stream, {
+          silenceMs: 1800,
+          threshold: 0.035,
+          maxMs: 60000,
+          onSpeech: function () {
+            var st = document.getElementById('recStatus');
+            if (st) st.textContent = '🎙️ صدا شنیده شد — صحبت کنید… (با ۲ ثانیه سکوت، خودکار پایان می‌یابد)';
+          },
+          onStop: function (reason) {
+            if (!self.recording) return;
+            var st = document.getElementById('recStatus');
+            if (st) st.textContent = reason === 'maxlen'
+              ? '⏱️ به سقف ۶۰ ثانیه رسید — ضبط متوقف شد.'
+              : '⏸️ سکوت تشخیص داده شد — ضبط خودکار متوقف شد.';
+            self.stopRecord();
+          }
+        });
+      } catch (e) {
+        this.vad = null;
+      }
+    },
+
+    stopVad: function () {
+      if (this.vad) { try { this.vad.stop(); } catch (e) {} this.vad = null; }
     },
 
     stopRecord: function (silent) {
@@ -273,6 +326,7 @@
         }, 1400);
       }
 
+      this.stopVad();
       this.stopTimer();
       this.stopWaveform();
       this.recording = false;
@@ -494,6 +548,16 @@
      */
     loadPuter: function () {
       var self = this;
+      // 🔌 آفلاین‌محور: Puter یک سرویس بین‌المللی است و در ایران (با اینترنت قطع)
+      // در دسترس نیست. فقط اگر کاربر صریحاً اجازه دهد تلاش می‌کنیم.
+      if (this.allowInternational === undefined) {
+        var pref = null;
+        try { pref = localStorage.getItem('hp_allow_international'); } catch (e) {}
+        this.allowInternational = pref === '1';
+      }
+      if (!this.allowInternational) {
+        return Promise.reject(new Error('OFFLINE_MODE'));
+      }
       if (window.puter && window.puter.ai && typeof window.puter.ai.speech2txt === 'function') {
         return Promise.resolve(window.puter);
       }
@@ -529,7 +593,15 @@
      */
     transcribeInBrowser: async function () {
       if (!this.audioBlob) throw new Error('فایل صوتی برای تشخیص گفتار وجود ندارد');
-      var puter = await this.loadPuter();
+      var puter;
+      try {
+        puter = await this.loadPuter();
+      } catch (e) {
+        if (e && e.message === 'OFFLINE_MODE') {
+          throw new Error('حالت آفلاین فعال است. متن را در کادر بنویسید یا «پردازش هوشمند» را بزنید — موتور فارسی داخلی روی سرور خودتان کار می‌کند و به اینترنت نیاز ندارد.');
+        }
+        throw e;
+      }
       var result;
       try {
         result = await puter.ai.speech2txt(this.audioBlob, { model: 'whisper-1', language: 'fa' });

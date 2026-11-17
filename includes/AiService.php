@@ -14,6 +14,51 @@ declare(strict_types=1);
  */
 final class AiService
 {
+    /** کش نتیجهٔ بررسی اتصال بین‌المللی در همین درخواست */
+    private static ?bool $intlReachable = null;
+
+    /**
+     * آیا سرور به سرویس‌های بین‌المللی (Groq/Gemini/Pollinations) دسترسی دارد؟
+     *
+     * 🔌 این تابع قلب «حالت ایران/آفلاین» است: اگر اینترنت بین‌الملل قطع باشد،
+     * به‌جای منتظر ماندن ۴۵ ثانیه‌ای برای هر سرویس، در کمتر از ۲ ثانیه
+     * تشخیص می‌دهیم و مستقیم سراغ موتور فارسی داخلی می‌رویم.
+     */
+    public static function internationalReachable(): bool
+    {
+        if (self::$intlReachable !== null) {
+            return self::$intlReachable;
+        }
+        // اگر مدیر صریحاً حالت آفلاین را روشن کرده باشد، هیچ تلاشی نمی‌کنیم
+        if (get_setting('ai_offline_mode', '0') === '1') {
+            self::$intlReachable = false;
+            return false;
+        }
+        if (!function_exists('curl_init')) {
+            self::$intlReachable = false;
+            return false;
+        }
+        // پروب سبک: فقط برقراری اتصال TCP/TLS (بدون دانلود محتوا)
+        $ch = curl_init('https://api.groq.com/');
+        curl_setopt_array($ch, [
+            CURLOPT_NOBODY         => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 2,       // کوتاه: کاربر نباید معطل بماند
+            CURLOPT_CONNECTTIMEOUT => 2,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+
+        // هر پاسخ HTTP (حتی 401/403/404) یعنی «اینترنت بین‌الملل وصل است».
+        // خطای شبکه/SSL یعنی قطع است.
+        self::$intlReachable = ($code > 0) || ($err === '');
+        return self::$intlReachable;
+    }
+
     /**
      * پردازش کامل ویس و/یا متن گفتار و بازگرداندن تسک‌های استخراج‌شده با تاریخ دقیق شمسی
      */
@@ -32,10 +77,22 @@ final class AiService
         $usedEngine = '';
         $notes      = [];
 
+        // 🔌 حالت ایران/آفلاین: اگر اینترنت بین‌الملل قطع است،
+        // هیچ سرویس ابری امتحان نمی‌شود (نه Groq، نه Gemini، نه Pollinations).
+        $online = self::internationalReachable();
+        if (!$online) {
+            $notes[] = 'حالت آفلاین: سرویس‌های بین‌المللی در دسترس نیستند؛ موتور فارسی داخلی استفاده می‌شود.';
+            // اگر هیچ متنی نداریم و فقط صدا داریم، نمی‌توانیم آنلاین تبدیل کنیم
+            if ($transcript === '' && $savedVoice !== null) {
+                $notes[] = 'برای تبدیل صدا به متن بدون اینترنت: از دکمهٔ «🎧 تشخیص گفتار در مرورگر» استفاده کنید یا متن را دستی بنویسید.';
+                throw new RuntimeException(implode("\n", $notes));
+            }
+        }
+
 
         // گام ۲: اگر کلید رایگان Google Gemini فعال است (می‌تواند مستقیم فایل صوتی فارسی را بدون نیاز به متن هم بفهمد!)
-        if (
-            in_array($preferred, ['auto', 'gemini'], true)
+        if ($online
+            && in_array($preferred, ['auto', 'gemini'], true)
             && $geminiKey !== ''
             && ($groqKey === '' || $preferred === 'gemini')
             && ($transcript !== '' || ($savedVoice !== null && is_file($savedVoice['full_path'] ?? '')))
@@ -76,7 +133,7 @@ final class AiService
             $audioMime = (string) ($savedVoice['mime_type'] ?? 'audio/webm');
 
             // ۱) Groq Whisper (رایگان، دقیق‌ترین گزینه برای فارسی)
-            if (in_array($preferred, ['auto', 'groq', 'pollinations'], true) && $groqKey !== '') {
+            if ($online && in_array($preferred, ['auto', 'groq', 'pollinations'], true) && $groqKey !== '') {
                 try {
                     $t = self::transcribeWithGroqWhisper($audioPath, $audioMime, $groqKey);
                     if ($t !== '') {
@@ -90,7 +147,7 @@ final class AiService
             }
 
             // ۲) Pollinations Whisper — بدون کلید و همیشه در دسترس (اگر Groq کلید نداشت یا خطا داد)
-            if ($transcript === '' && in_array($preferred, ['auto', 'pollinations', 'groq'], true)) {
+            if ($online && $transcript === '' && in_array($preferred, ['auto', 'pollinations', 'groq'], true)) {
                 try {
                     $t = self::transcribeWithPollinationsWhisper($audioPath, $audioMime);
                     if ($t !== '') {
@@ -115,7 +172,7 @@ final class AiService
         }
 
         // گام ۳: تحلیل متن گفتار با Groq Llama 3.3 رایگان (در صورت وجود کلید رایگان)
-        if (in_array($preferred, ['auto', 'groq'], true) && $groqKey !== '') {
+        if ($online && in_array($preferred, ['auto', 'groq'], true) && $groqKey !== '') {
             try {
                 $llmTasks = self::extractWithGroqLlama($transcript, $assignableUsers, $projects, $currentUserId, $groqKey);
                 if (!empty($llmTasks)) {
@@ -132,7 +189,7 @@ final class AiService
         }
 
         // گام ۴: سرویس کاملاً رایگان و بدون کلید Pollinations AI
-        if (in_array($preferred, ['auto', 'pollinations'], true) && function_exists('curl_init')) {
+        if ($online && in_array($preferred, ['auto', 'pollinations'], true) && function_exists('curl_init')) {
             try {
                 $pollTasks = self::extractWithPollinationsFree($transcript, $assignableUsers, $projects, $currentUserId);
                 if (!empty($pollTasks)) {
@@ -303,6 +360,14 @@ PROMPT;
     public static function sttSetupAdvice(bool $hasGroq, bool $hasGemini, array $reach): string
     {
         $parts = [];
+        // 🔌 اگر حالت آفلاین/ایران فعال است، پیام شفاف بده
+        if (get_setting('ai_offline_mode', '0') === '1' || !self::internationalReachable()) {
+            $parts[] = '🔌 حالت آفلاین (سازگار با ایران): هیچ درخواستی به سرویس‌های بین‌المللی فرستاده نمی‌شود.';
+            $parts[] = '🧠 همهٔ امکانات برنامه — تسک، کانبان، حضور و غیاب، مرخصی، اعلان، تقویم شمسی و پردازش جملهٔ فارسی (تاریخ، ساعت، مسئول، عنوان) — روی سرور خودتان و بدون اینترنت کار می‌کند.';
+            $parts[] = '✍️ تشخیص گفتار → متن: مطمئن‌ترین راه بدون اینترنت، نوشتن متن در کادر است (دکمهٔ «پردازش هوشمند»).';
+            $parts[] = '🎧 «تشخیص گفتار مرورگر» رایگان است اما در کروم به سرویس ابری گوگل تکیه دارد و با قطعی اینترنت بین‌الملل ممکن است پاسخ ندهد؛ در آن صورت متن را تایپ کنید.';
+            return implode(' ', $parts);
+        }
         if ($hasGroq) {
             $parts[] = '✅ کلید Groq تنظیم شده است — دقیق‌ترین و سریع‌ترین حالت تشخیص گفتار فارسی فعال است.';
         } elseif ($hasGemini) {
