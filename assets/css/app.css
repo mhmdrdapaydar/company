@@ -599,3 +599,37 @@ pre,code{overflow-wrap:anywhere}
   .content{max-width:none;padding:0}
   .card{box-shadow:none;border-color:#ddd;break-inside:avoid}
 }
+
+/* ============ 🎙️ کارت پیش‌نمایش تسک صوتی — خواناتر ============ */
+.ai-preview-card{border-color:color-mix(in srgb,var(--primary) 22%,var(--border))}
+/* عنوان تسک: برجسته‌ترین فیلد کارت، نه یکی از ۹ فیلد هم‌وزن */
+.ai-preview-card .field:first-of-type > span{color:var(--primary);font-size:12.5px}
+.ai-preview-card .field:first-of-type input{
+  font-size:15px;font-weight:800;padding:11px 13px;
+  border-color:color-mix(in srgb,var(--primary) 35%,var(--border));
+  background:var(--card);
+}
+.ai-preview-card .field:first-of-type input:focus{
+  border-color:var(--primary2);
+  box-shadow:0 0 0 3px var(--primary-soft);
+}
+/* شمارهٔ تسک: نشان گرد */
+.ai-preview-card .tnum{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:22px;height:22px;padding:0 7px;
+  border-radius:99px;background:var(--primary-soft);color:var(--primary);
+  font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums;
+}
+[data-theme="dark"] .ai-preview-card .tnum{background:#134e4a;color:#5eead4}
+/* نشانگرهای پایین کارت: با برچسب، تا با فیلدها اشتباه نشوند */
+.ai-meta{
+  border-top:1px dashed var(--border);padding-top:9px;margin-top:12px;
+}
+.ai-meta .badge{font-size:11px;padding:3px 10px}
+/* برچسب «تاریخ سررسید (شمسی)» و «ساعت» در موبایل به هم نچسبند */
+@media (max-width:600px){
+  .ai-preview-card{padding:12px 11px;border-radius:12px}
+  .ai-preview-card .field{margin-bottom:11px}
+  .ai-preview-card .field>span{font-size:11.5px;margin-bottom:4px;line-height:1.5}
+  .ai-preview-card .form-row{gap:9px}
+}

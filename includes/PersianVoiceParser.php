@@ -206,7 +206,11 @@ final class PersianVoiceParser
             if (mb_strlen($seg, 'UTF-8') < 3) {
                 continue;
             }
-            $tasks[] = self::parseSingle($seg, $users, $projects, $defaultUserId);
+            $one = self::parseSingle($seg, $users, $projects, $defaultUserId);
+            // قطعه‌ای که موضوعی ندارد (فقط زمان/نام) تسک نمی‌شود
+            if (trim((string) ($one['title'] ?? '')) !== '') {
+                $tasks[] = $one;
+            }
         }
 
         return $tasks;
@@ -861,6 +865,27 @@ final class PersianVoiceParser
             }
         }
 
+        // ۳. نام کوچک بدون حرف اضافه («فردا سارا» / «فردا جلسه سارا»)
+        //    فقط وقتی که با حرف اضافه تشخیص داده نشده باشد.
+        foreach ($users as $u) {
+            $full = normalize_persian((string) $u['full_name']);
+            $parts = array_values(array_filter(
+                preg_split('/\s+/u', $full) ?: [],
+                static fn(string $p): bool => mb_strlen($p, 'UTF-8') >= 3
+            ));
+            foreach ($parts as $part) {
+                $qp = preg_quote($part, '/');
+                // نام باید «کلمهٔ مستقل» باشد، نه بخشی از کلمهٔ دیگر
+                if (preg_match('/(?<![\p{L}\x{200C}])' . $qp . '(?![\p{L}\x{200C}])/u', $text, $m)) {
+                    return [
+                        'user_id'         => (int) $u['id'],
+                        'user_name'       => (string) $u['full_name'],
+                        'matched_phrases' => [$m[0]],
+                    ];
+                }
+            }
+        }
+
         return [
             'user_id'         => $defaultUserId,
             'user_name'       => $defaultName,
@@ -990,8 +1015,17 @@ final class PersianVoiceParser
             }
             $t = preg_replace('/\s+/u', ' ', trim($t)) ?? $t;
             // پاک‌سازی «و»/«با» سرگردان در ابتدا/انتهای عبارت
+            // («فردا با سارا محمدی» → «فردا با» → «فردا»)
             $t = preg_replace('/^(?:و|با)\s+/u', '', $t) ?? $t;
             $t = preg_replace('/\s+(?:و|با)\s*$/u', '', $t) ?? $t;
+            // حرف اضافهٔ سرگردان در انتها (وقتی فقط نام حذف شده و موضوعی نمانده)
+            // («فردا برای» / «فردا به» → «فردا»)
+            $t = preg_replace('/\s+(?:برای|به|با|از|توسط)\s*$/u', '', $t) ?? $t;
+            $t = preg_replace('/^(?:برای|به)\s+/u', '', $t) ?? $t;
+            // «و» سرگردان در وسط («جلسه و با» → «جلسه»)
+            $t = preg_replace('/\s+(?:و|با)\s+(?=$)/u', '', $t) ?? $t;
+            $t = preg_replace('/\s{2,}/u', ' ', $t) ?? $t;
+            $t = trim($t);
         }
 
         // حذف عبارات زمانی نسبی که در فیلد تاریخ ثبت شده‌اند ولی از متن حذف نشده‌اند
@@ -1052,10 +1086,28 @@ final class PersianVoiceParser
         $t = self::polishTitle($t);
 
         if (mb_strlen($t, 'UTF-8') < 3) {
-            $t = self::polishTitle($originalText);
+            // ⚠️ fallback نباید به «متن خام» برگردد: متن خام نام کارمند
+            // («سارا محمدی») و کلمهٔ تاریخ («فردا») را هم دارد و عنوانی مثل
+            // «فردا با سارا محمدی» می‌سازد که موضوع تسک نیست.
+            $t = self::polishTitle($strippedText);
+        }
+        if (mb_strlen($t, 'UTF-8') < 3 && !empty($knownNames)) {
+            // آخرین تلاش: متن خام بدون نام کارمندان و بدون زمان
+            $withoutNames = $originalText;
+            foreach ($knownNames as $nm) {
+                $full = preg_quote(trim((string) $nm), '/');
+                $withoutNames = preg_replace('/\s*(?:و|با|از|برای|به)?\s*' . $full . '\s*/u', ' ', $withoutNames) ?? $withoutNames;
+            }
+            $t = self::stripTimeAndFiller($withoutNames);
         }
 
-        return mb_substr($t !== '' ? $t : 'تسک صوتی جدید', 0, 180, 'UTF-8');
+        // اگر هنوز موضوعی نداریم، عنوان نساز — بگذار لایهٔ بالاتر پیام روشن بدهد
+        // (بهتر از تسکی با عنوان «تسک صوتی جدید» که کاربر باید پاکش کند)
+        if (mb_strlen(self::polishTitle($t), 'UTF-8') < 3) {
+            return '';
+        }
+
+        return mb_substr($t, 0, 180, 'UTF-8');
     }
 
     /**
