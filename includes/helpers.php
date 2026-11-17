@@ -79,6 +79,11 @@ function normalize_persian(?string $text, bool $convertDigitsToEn = false): stri
  */
 function clean_line(mixed $value, int $maxLength = 255): string
 {
+    // ⚠️ آرایه/آبجکت نباید بی‌صدا به رشته «Array» تبدیل شود
+    // (پیش‌تر title=['a'] یک تسک با عنوان «Array» می‌ساخت و PHP Warning می‌داد)
+    if ($value !== null && !is_scalar($value)) {
+        return '';
+    }
     $str = normalize_persian((string) ($value ?? ''));
     $str = str_replace("\n", ' ', $str);
     $str = preg_replace('/\s+/u', ' ', $str) ?? $str;
@@ -90,6 +95,9 @@ function clean_line(mixed $value, int $maxLength = 255): string
  */
 function clean_text(mixed $value, int $maxLength = 10000): string
 {
+    if ($value !== null && !is_scalar($value)) {
+        return '';
+    }
     $str = normalize_persian((string) ($value ?? ''));
     return mb_substr(trim($str), 0, $maxLength, 'UTF-8');
 }

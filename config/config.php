@@ -85,7 +85,7 @@ defined('SQLITE_DB_PATH')   || define('SQLITE_DB_PATH', STORAGE_PATH . '/databas
 
 // اطلاعات سامانه و منطقه زمانی ایران
 defined('APP_NAME')         || define('APP_NAME', (string) app_env('APP_NAME', 'همکار پلاس'));
-defined('APP_VERSION')      || define('APP_VERSION', '2.0.4');
+defined('APP_VERSION')      || define('APP_VERSION', '2.0.5');
 defined('APP_TIMEZONE')     || define('APP_TIMEZONE', (string) app_env('APP_TIMEZONE', 'Asia/Tehran'));
 defined('APP_DEBUG')        || define('APP_DEBUG', filter_var(app_env('APP_DEBUG', 'false'), FILTER_VALIDATE_BOOLEAN));
 
