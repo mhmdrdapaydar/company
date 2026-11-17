@@ -1063,6 +1063,20 @@ try {
             break;
         }
 
+        case 'attendance_delete': {
+            if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
+            require_manager();
+            $id = (int) ($data['id'] ?? 0);
+            if ($id <= 0) json_error('شناسه رکورد حضور نامعتبر است.');
+            $rec = Database::fetchOne('SELECT a.*, u.full_name FROM attendance a LEFT JOIN users u ON u.id = a.user_id WHERE a.id = ?', [$id]);
+            if (!$rec) json_error('رکورد حضور یافت نشد.', 404);
+            Database::execute('DELETE FROM attendance WHERE id = ?', [$id]);
+            log_activity($uid, 'attendance_delete', 'attendance', $id,
+                'رکورد حضور ' . Jalali::toHuman((string) $rec['work_date'], true, true) . ' برای «' . ($rec['full_name'] ?? '—') . '» حذف شد.');
+            json_success(['id' => $id], 'رکورد حضور حذف شد.');
+            break;
+        }
+
         case 'attendance_clock_out': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $today = today_date();
@@ -1473,7 +1487,9 @@ try {
             $current = (string) ($data['current_password'] ?? '');
             $new = (string) ($data['new_password'] ?? '');
             $confirm = (string) ($data['new_password_confirm'] ?? '');
-            if (!password_verify($current, (string) $user['password_hash'])) json_error('رمز عبور فعلی نادرست است.');
+            // هش رمز در آبجکت کاربر نگه داشته نمی‌شود (برای امنیت)؛ جداگانه خوانده می‌شود
+            $hashRow = Database::fetchOne('SELECT password_hash FROM users WHERE id = ? LIMIT 1', [$uid]);
+            if (!$hashRow || !password_verify($current, (string) $hashRow['password_hash'])) json_error('رمز عبور فعلی نادرست است.');
             if (mb_strlen($new, 'UTF-8') < 6) json_error('رمز عبور جدید باید حداقل ۶ کاراکتر باشد.');
             if ($new !== $confirm) json_error('تکرار رمز عبور جدید مطابقت ندارد.');
             Database::execute('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), now_datetime(), $uid]);

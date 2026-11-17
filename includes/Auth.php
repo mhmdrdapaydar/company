@@ -39,6 +39,9 @@ final class Auth
         $user['is_active']     = (int) $user['is_active'];
         $user['role_label']    = user_role_label((string) $user['role']);
         $user['initials']      = persian_initials((string) $user['full_name']);
+        // 🔒 هرگز هش رمز عبور را در آبجکت کاربر نگه نداریم:
+        // این آبجکت در پاسخ‌های bootstrap / me / profile_update به مرورگر می‌رود.
+        unset($user['password_hash'], $user['remember_token'], $user['reset_token']);
         self::$currentUser     = $user;
 
         return self::$currentUser;

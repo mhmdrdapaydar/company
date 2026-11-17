@@ -297,6 +297,7 @@ function activity_action_label(string $action): string
         'clock_in'          => 'ثبت ورود',
         'clock_out'         => 'ثبت خروج',
         'attendance_manual' => 'ثبت دستی حضور',
+        'attendance_delete' => 'حذف رکورد حضور',
         'leave_request'     => 'درخواست مرخصی',
         'leave_review'      => 'بررسی مرخصی',
         'create_user'       => 'ایجاد کارمند',

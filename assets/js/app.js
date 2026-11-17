@@ -1437,7 +1437,8 @@
         body += emptyState('🗓️', 'در این ماه سابقه‌ای ثبت نشده است.');
       } else {
         body += '<div class="table-wrap"><table class="table"><thead><tr>' +
-          '<th>تاریخ</th><th>روز</th><th>ورود</th><th>خروج</th><th>کارکرد</th><th>نوع</th><th>یادداشت</th></tr></thead><tbody>' +
+          '<th>تاریخ</th><th>روز</th><th>ورود</th><th>خروج</th><th>کارکرد</th><th>نوع</th><th>یادداشت</th>' +
+          (APP.user.is_manager ? '<th></th>' : '') + '</tr></thead><tbody>' +
           rows.map(function (r) {
             var open = !r.check_out;
             return '<tr>' +
@@ -1448,6 +1449,7 @@
               '<td>' + esc(r.total_fa) + '</td>' +
               '<td class="small">' + esc(r.work_mode_label) + '</td>' +
               '<td class="small muted">' + esc(r.note || '—') + '</td>' +
+              (APP.user.is_manager ? '<td><button class="icon-btn" data-attdel="' + r.id + '" title="حذف این رکورد">✕</button></td>' : '') +
               '</tr>';
           }).join('') + '</tbody></table></div>';
       }
@@ -1492,6 +1494,18 @@
       });
       $('#eaMonth').addEventListener('change', reload);
       $('#eaYear').addEventListener('change', reload);
+
+      // حذف یک رکورد حضور (فقط مدیر) — پیش‌تر هیچ راهی برای اصلاح رکورد اشتباه نبود
+      document.querySelectorAll('#genericBody [data-attdel]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = Number(btn.getAttribute('data-attdel'));
+          if (!id) return;
+          if (!confirm('این رکورد حضور حذف شود؟ این کار قابل بازگشت نیست.')) return;
+          api('attendance_delete', { id: id })
+            .then(function (r) { toast(r.message || 'رکورد حذف شد.'); reload(); })
+            .catch(function (e) { toast(e.message, 'error'); });
+        });
+      });
     }
 
     function reload() {

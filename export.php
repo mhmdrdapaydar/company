@@ -13,6 +13,32 @@ $format = strtolower((string) ($_GET['format'] ?? 'csv'));
 $companyName = get_setting('company_name', APP_NAME);
 $todayHuman = Jalali::toHuman(today_date(), true, true);
 
+/**
+ * 🔒 خنثی‌سازی تزریق فرمول در CSV (Excel/Sheets CSV Injection)
+ *
+ * اگر مقدار با = + - @ یا TAB/CR شروع شود، اکسل آن را فرمول اجرا می‌کند.
+ * راه‌حل: یک آپاستروف ابتدای مقدار (اکسل آن را به‌عنوان «متن» می‌شناسد).
+ *
+ * ⚠️ نکته مهم: fputcsv پی‌اچ‌پی وقتی مقدار با «'» شروع شود آن را در گیومه
+ * نمی‌گذارد، بنابراین اگر مقدار ویرگول داشته باشد سطر CSV خراب می‌شود.
+ * به همین دلیل بعد از افزودن آپاستروف، در صورت نیاز خودمان گیومه می‌گذاریم.
+ */
+function csv_neutralize(mixed $value): string
+{
+    $v = (string) $value;
+    if ($v === '') {
+        return '';
+    }
+    if (preg_match('/^[=\+\-@\t\r]/', $v)) {
+        $v = "'" . $v;
+    }
+    // اگر fputcsv آن را گیومه‌گذاری نکند ولی نیاز به گیومه دارد، خودمان انجام می‌دهیم
+    if (strpbrk($v, ",\"\n\r\t") !== false) {
+        return '"' . str_replace('"', '""', $v) . '"';
+    }
+    return $v;
+}
+
 function export_csv_download(string $filename, array $headers, array $rows): never
 {
     header('Content-Type: text/csv; charset=UTF-8');
@@ -21,9 +47,9 @@ function export_csv_download(string $filename, array $headers, array $rows): nev
     // BOM برای نمایش صحیح فارسی در اکسل
     echo "\xEF\xBB\xBF";
     $out = fopen('php://output', 'w');
-    fputcsv($out, $headers);
+    fputcsv($out, array_map('csv_neutralize', $headers));
     foreach ($rows as $row) {
-        fputcsv($out, $row);
+        fputcsv($out, array_map('csv_neutralize', $row));
     }
     fclose($out);
     exit;
