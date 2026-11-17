@@ -254,6 +254,24 @@ function task_priority_label(string $priority): string
     };
 }
 
+/**
+ * ماسک‌کردن کلید API برای نمایش امن در رابط کاربری
+ * (هرگز کلید کامل به مرورگر فرستاده نمی‌شود)
+ */
+function mask_api_key(string $key): string
+{
+    $key = trim($key);
+    if ($key === '') {
+        return '';
+    }
+    $len = strlen($key);
+    if ($len <= 8) {
+        return str_repeat('•', $len);
+    }
+    return substr($key, 0, 4) . str_repeat('•', 12) . substr($key, -4);
+}
+
+
 function user_role_label(string $role): string
 {
     return match ($role) {

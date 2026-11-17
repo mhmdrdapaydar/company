@@ -1485,8 +1485,12 @@ try {
                 'allow_employee_peer_task' => get_setting('allow_employee_peer_task', '0'),
                 'ai_provider' => get_setting('ai_provider', AI_PROVIDER),
                 'ai_auto_create' => get_setting('ai_auto_create', '0'),
-                'groq_api_key' => get_setting('groq_api_key', GROQ_API_KEY),
-                'gemini_api_key' => get_setting('gemini_api_key', GEMINI_API_KEY),
+                // 🔒 کلیدهای API هرگز به‌صورت متن کامل به مرورگر فرستاده نمی‌شوند؛
+                // فقط ماسک (برای نمایش «ثبت شده») + وضعیت وجود کلید.
+                'groq_api_key' => mask_api_key(get_setting('groq_api_key', GROQ_API_KEY)),
+                'gemini_api_key' => mask_api_key(get_setting('gemini_api_key', GEMINI_API_KEY)),
+                'groq_api_key_set' => trim(get_setting('groq_api_key', GROQ_API_KEY)) !== '',
+                'gemini_api_key_set' => trim(get_setting('gemini_api_key', GEMINI_API_KEY)) !== '',
             ]]);
             break;
         }
@@ -1498,6 +1502,13 @@ try {
             foreach ($allowed as $key) {
                 if (array_key_exists($key, $data)) {
                     $val = (string) $data[$key];
+                    // 🔒 اگر مقدار ماسک‌شده برگشت (کاربر تغییرش نداده)، کلید فعلی حفظ شود
+                    if (in_array($key, ['groq_api_key', 'gemini_api_key'], true)) {
+                        if ($val === '' || str_contains($val, '•') || str_contains($val, '*')) {
+                            continue;
+                        }
+                        $val = trim($val);
+                    }
                     if (in_array($key, ['company_name', 'company_slogan'], true)) $val = clean_line($val, 300);
                     if (in_array($key, ['work_start_time', 'work_end_time'], true)) {
                         $parsedTime = parse_time_input($val);

@@ -1540,8 +1540,17 @@
       $('#stWorkStart').value = s.work_start_time || '08:30';
       $('#stWorkEnd').value = s.work_end_time || '17:00';
       $('#stAiProvider').value = s.ai_provider || 'auto';
+      // 🔒 سرور فقط نسخه ماسک‌شده را می‌فرستد؛ خالی‌گذاشتن کادر = حفظ کلید فعلی
       $('#stGroqKey').value = s.groq_api_key || '';
+      $('#stGroqKey').placeholder = s.groq_api_key_set ? 'کلید ثبت شده — برای تغییر، کلید جدید را وارد کنید' : 'gsk_...';
       $('#stGeminiKey').value = s.gemini_api_key || '';
+      $('#stGeminiKey').placeholder = s.gemini_api_key_set ? 'کلید ثبت شده — برای تغییر، کلید جدید را وارد کنید' : 'AIza...';
+      var groqState = document.getElementById('stGroqKeyState');
+      if (groqState) {
+        groqState.textContent = s.groq_api_key_set
+          ? '✅ کلید Groq ثبت شده است. برای حذف آن، کادر را خالی کنید و ذخیره بزنید.'
+          : '⚠️ کلیدی ثبت نشده است — بدون کلید، تشخیص گفتار فقط در مرورگر انجام می‌شود.';
+      }
       $('#stSelfTask').checked = s.allow_employee_self_task === '1';
       $('#stPeerTask').checked = s.allow_employee_peer_task === '1';
     }).catch(function (err) { toast(err.message, 'error'); });

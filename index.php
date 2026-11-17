@@ -437,8 +437,9 @@ $theme       = 'light';
                 <option value="local">🇮🇷 موتور هوشمند فارسی داخلی (آفلاین)</option>
               </select>
             </label>
-            <label class="field"><span>کلید رایگان Groq (اختیاری)</span><input type="text" id="stGroqKey" dir="ltr" placeholder="gsk_..."></label>
-            <label class="field"><span>کلید رایگان Gemini (اختیاری)</span><input type="text" id="stGeminiKey" dir="ltr" placeholder="AIza..."></label>
+            <label class="field"><span>کلید رایگان Groq (اختیاری)</span><input type="text" id="stGroqKey" dir="ltr" placeholder="gsk_..." autocomplete="off" spellcheck="false"></label>
+            <div class="small muted" id="stGroqKeyState" style="margin:-4px 0 10px;line-height:1.8"></div>
+            <label class="field"><span>کلید رایگان Gemini (اختیاری)</span><input type="text" id="stGeminiKey" dir="ltr" placeholder="AIza..." autocomplete="off" spellcheck="false"></label>
             <div class="small muted" style="margin:-4px 0 10px;line-height:1.9">
               🎧 تشخیص گفتار فارسی سه لایه دارد: کلید رایگان Groq (دقیق‌ترین) ← کلید Gemini ← Whisper رایگان بدون کلید (Pollinations).
               اگر هیچ‌کدام در دسترس نبود، دکمه «تبدیل صدا به متن بدون کلید» داخل پنجره ضبط، صدا را در مرورگر تبدیل می‌کند.

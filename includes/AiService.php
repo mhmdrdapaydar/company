@@ -222,7 +222,15 @@ final class AiService
     }
   ]
 }
-اگر نام کارمند خاصی ذکر نشد، assigned_to را برابر {$currentUserId} بگذار. اگر روزی ذکر نشد، تاریخ امروز ({$todayJ}) را قرار بده.
+قواعد الزامی (دقیقاً رعایت کن):
+۱) عنوان باید فقط «موضوع کار» باشد؛ هیچ کلمه زمانی (فردا، امروز، هفته آینده، ماه بعد، ساعت ۱۰) و هیچ فعل دستوری (بساز، بذار، ثبت کن، یادم بنداز) در عنوان نیاید. عنوان باید مستقل و قابل‌فهم باشد، نه یک کلمه ناقص.
+   نمونه درست: «ارسال گزارش مالی ماهانه» / نمونه غلط: «ارسال» یا «هفته آینده ارسال».
+۲) «هفته آینده پنجشنبه» یعنی پنجشنبهٔ هفتهٔ بعد (۷ روز بعد از پنجشنبهٔ همین هفته)، نه پنجشنبهٔ جاری.
+۳) «تا اول ماه بعد» یعنی روز اول ماه شمسی بعد؛ «آخر هفته» یعنی پنجشنبهٔ پیش رو؛ «آخر ماه» یعنی آخرین روز ماه جاری.
+۴) اعداد و ماه‌های حروفی فارسی را دقیق تبدیل کن: «بیست و هشتم آبان» = ۲۸ آبان، «پنجم دی» = ۵ دی.
+۵) اگر بازه زمانی گفته شد («تا آخر هفته»، «تا پنجشنبه»)، همان را due_date بگذار.
+۶) اگر نام پروژه‌ای در فهرست بالا صریحاً گفته شد، project_id همان پروژه را بگذار؛ در غیر این صورت null. موضوع تسک را حذف نکن حتی اگر شبیه نام پروژه باشد.
+۷) اگر نام کارمند خاصی ذکر نشد، assigned_to را برابر {$currentUserId} بگذار. اگر روزی ذکر نشد، تاریخ امروز ({$todayJ}) را قرار بده.
 PROMPT;
     }
 
@@ -434,46 +442,67 @@ PROMPT;
             throw new RuntimeException('افزونه cURL فعال نیست.');
         }
 
-        $cfile = new CURLFile($filePath, $mimeType, basename($filePath));
-        $postFields = [
-            'file'            => $cfile,
-            'model'           => 'whisper-large-v3-turbo',
-            'language'        => 'fa',
-            'response_format' => 'json',
-            'temperature'     => '0',
-        ];
+        // پیام راهنما (prompt) دقت فارسی را به‌طور محسوس بالا می‌برد:
+        // Whisper از آن هم برای زبان و هم برای واژگان تخصصی (تسک، اولویت، تاریخ شمسی) استفاده می‌کند.
+        $promptHint = 'این یک فرمان صوتی فارسی برای ساخت تسک در یک شرکت ایرانی است. '
+            . 'واژه‌های رایج: تسک، جلسه، گزارش، اولویت فوری، اولویت بالا، فردا، پس‌فردا، '
+            . 'هفته آینده، شنبه، یکشنبه، دوشنبه، سه‌شنبه، چهارشنبه، پنجشنبه، جمعه، '
+            . 'فروردین، اردیبهشت، خرداد، تیر، مرداد، شهریور، مهر، آبان، آذر، دی، بهمن، اسفند.';
 
-        $raw = false;
-        $code = 0;
-        $err = '';
-        // دو تلاش: اول با بررسی کامل گواهی، و اگر بسته CA روی هاست نبود، بدون بررسی گواهی
-        foreach ([true, false] as $verify) {
-            $postFields['file'] = new CURLFile($filePath, $mimeType ?: 'audio/webm', basename($filePath));
-            $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
-            curl_setopt_array($ch, [
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => $postFields,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 40,
-                CURLOPT_CONNECTTIMEOUT => 8,
-                CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $apiKey],
-                CURLOPT_SSL_VERIFYPEER => $verify,
-                CURLOPT_SSL_VERIFYHOST => $verify ? 2 : 0,
-            ]);
-            $raw  = curl_exec($ch);
-            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $err  = curl_error($ch);
-            curl_close($ch);
-            if (!($raw === false && self::isCertError($err))) {
-                break; // خطای گواهی بود؟ یک‌بار دیگر بدون بررسی تلاش کن
+        // مدل‌ها به ترتیب کیفیت — اگر یکی در دسترس نبود، بعدی امتحان می‌شود
+        $models   = ['whisper-large-v3', 'whisper-large-v3-turbo'];
+        $lastErr  = '';
+
+        foreach ($models as $model) {
+            $postFields = [
+                'model'           => $model,
+                'language'        => 'fa',
+                'response_format' => 'json',
+                'temperature'     => '0',
+                'prompt'          => $promptHint,
+            ];
+
+            $raw = false;
+            $code = 0;
+            $err = '';
+            // دو تلاش: اول با بررسی کامل گواهی، و اگر بسته CA روی هاست نبود، بدون بررسی گواهی
+            foreach ([true, false] as $verify) {
+                $postFields['file'] = new CURLFile($filePath, $mimeType ?: 'audio/webm', basename($filePath));
+                $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $postFields,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 45,
+                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $apiKey],
+                    CURLOPT_SSL_VERIFYPEER => $verify,
+                    CURLOPT_SSL_VERIFYHOST => $verify ? 2 : 0,
+                ]);
+                $raw  = curl_exec($ch);
+                $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $err  = curl_error($ch);
+                curl_close($ch);
+                if (!($raw === false && self::isCertError($err))) {
+                    break; // خطای گواهی بود؟ یک‌بار دیگر بدون بررسی تلاش کن
+                }
+            }
+
+            if ($raw !== false && $code < 400) {
+                $data = json_decode((string) $raw, true);
+                $text = trim((string) ($data['text'] ?? ''));
+                if ($text !== '') {
+                    return $text;
+                }
+            }
+            $lastErr = $err !== '' ? $err : "HTTP {$code} ({$model})";
+            // اگر خطای احراز هویت یا درخواست نامعتبر بود، تلاش مدل بعدی بی‌فایده است
+            if (in_array($code, [400, 401, 403, 404], true)) {
+                break;
             }
         }
 
-        if ($raw === false || $code >= 400) {
-            throw new RuntimeException($err !== '' ? $err : "HTTP {$code}");
-        }
-        $data = json_decode((string) $raw, true);
-        return trim((string) ($data['text'] ?? ''));
+        throw new RuntimeException($lastErr !== '' ? $lastErr : 'تشخیص گفتار Groq ناموفق بود');
     }
 
     /**
@@ -586,6 +615,29 @@ PROMPT;
     /**
      * اعتبارسنجی، تکمیل و استانداردسازی خروجی مدل‌های هوش مصنوعی با تقویم شمسی و لیست کارمندان مجاز
      */
+    /**
+     * آیا عنوان تولیدشده توسط مدل «ضعیف» است؟
+     * نشانه‌ها: خیلی کوتاه، یا آلوده به کلمات زمانی/دستوری که نباید در عنوان باشند.
+     */
+    private static function isWeakTitle(string $title): bool
+    {
+        $t = trim($title);
+        if ($t === '') {
+            return true;
+        }
+        // عنوان‌های تک‌کلمه‌ای معمولاً ناقص‌اند (مثل «ارسال»)
+        $wordCount = count(preg_split('/\s+/u', $t) ?: []);
+        if ($wordCount < 2 && mb_strlen($t, 'UTF-8') < 8) {
+            return true;
+        }
+        // نشت عبارت‌های زمانی/دستوری به داخل عنوان
+        $leak = '/\b(?:فردا|امروز|امشب|پس‌فردا|هفته\s+آینده|هفته\s+بعد|ماه\s+بعد|ماه\s+آینده|سال\s+آینده|ساعت\s+\S+|بساز|بذار|ثبت\s+کن|ایجاد\s+کن|یادم\s+بنداز|لطفاً|لطفا)\b/u';
+        if (preg_match($leak, $t)) {
+            return true;
+        }
+        return false;
+    }
+
     private static function normalizeAiTasks(
         array $rawTasks,
         string $fallbackTranscript,
@@ -614,6 +666,15 @@ PROMPT;
             $title = clean_line($item['title'] ?? '', 180);
             if ($title === '') {
                 continue;
+            }
+
+            // 🎯 اعتبارسنجی کیفیت عنوان: اگر مدل عنوان ناقص/آلوده به کلمات زمانی برگرداند،
+            // عنوان پارسر محلی (که در این پروژه دقیق‌تر است) جایگزین می‌شود.
+            if ($localFallback !== null && self::isWeakTitle($title)) {
+                $better = (string) ($localFallback['title'] ?? '');
+                if ($better !== '' && !self::isWeakTitle($better)) {
+                    $title = $better;
+                }
             }
 
             // ترجیح تاریخ شمسی مدل در صورت معتبر بودن، سپس تاریخ میلادی، سپس موتور فارسی داخلی
