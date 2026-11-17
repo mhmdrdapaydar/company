@@ -12,18 +12,12 @@ $uid         = (int) $user['id'];
 $isAdmin     = Auth::isAdmin();
 $isManager   = Auth::isManager();
 $companyName = get_setting('company_name', APP_NAME);
-$slogan      = get_setting('company_slogan', 'سامانه یکپارچه مدیریت تسک‌ها، حضور و غیاب و پروژه‌ها');
+$slogan      = get_setting('company_slogan', 'سامانه یکپارچه مدیریت تسک‌ها و پروژه‌ها');
 $todayHuman  = Jalali::toHuman(today_date(), true, true);
 $todayJalali = Jalali::toDateString(today_date(), true);
 $nowTime     = fa_digits(date('H:i'));
 $unread      = (int) Database::fetchValue('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0', [$uid], 0);
 $assignables = Auth::assignableUsers();
-// برای «نمایش ماه» حضور: مدیر باید سابقه همه کارمندان (حتی غیرفعال‌ها) را ببیند
-$attendanceUsers = ($isManager)
-    ? Database::fetchAll(
-        'SELECT id, full_name, is_active, role FROM users ORDER BY is_active DESC, full_name ASC'
-    )
-    : [];
 $projectsAll = Database::fetchAll("SELECT id, name, code, color FROM projects WHERE status = 'active' ORDER BY id ASC");
 $departments = Database::fetchAll('SELECT id, name FROM departments ORDER BY id ASC');
 $csrf        = csrf_token();
@@ -69,8 +63,6 @@ $theme       = 'light';
       <a href="#employees" data-section="employees"><span>👥</span> کارمندان</a>
       <a href="#departments" data-section="departments"><span>🏢</span> واحدهای سازمانی</a>
       <?php endif; ?>
-      <a href="#attendance" data-section="attendance"><span>⏰</span> حضور و غیاب</a>
-      <a href="#leaves" data-section="leaves"><span>🌴</span> مرخصی‌ها</a>
       <a href="#announcements" data-section="announcements"><span>📢</span> اطلاعیه‌ها</a>
       <a href="#notifications" data-section="notifications"><span>🔔</span> اعلان‌ها<?php if ($unread > 0): ?><span class="nav-badge"><?= e(fa_digits($unread)) ?></span><?php endif; ?></a>
       <?php if ($isManager): ?>
@@ -120,14 +112,6 @@ $theme       = 'light';
           <div style="flex:1;min-width:220px">
             <h2 style="font-size:18px">سلام <?= e((string) $user['full_name']) ?> 👋</h2>
             <div class="small muted">امروز <?= e($todayHuman) ?> — خوش آمدید به <?= e($companyName) ?></div>
-          </div>
-          <div class="att-summary" id="dashAttendanceBox">
-            <div>
-              <div class="small muted">حضور امروز</div>
-              <div class="att-big" id="dashCheckIn">—</div>
-            </div>
-            <button class="btn btn-primary" id="btnClockIn">⏰ ثبت ورود</button>
-            <button class="btn" id="btnClockOut" style="display:none">🚪 ثبت خروج</button>
           </div>
         </div>
 
@@ -269,81 +253,6 @@ $theme       = 'light';
         <div class="grid grid-3" id="departmentsGrid"><div class="loading"><div class="spinner"></div></div></div>
       </section>
       <?php endif; ?>
-
-      <!-- ================= حضور و غیاب ================= -->
-      <section class="section" id="section-attendance">
-        <div class="grid grid-3" style="margin-bottom:16px">
-          <div class="card">
-            <h3>⏰ حضور امروز</h3>
-            <div class="att-summary">
-              <div><div class="small muted">ساعت ورود</div><div class="att-big" id="attCheckIn">—</div></div>
-              <div><div class="small muted">ساعت خروج</div><div class="att-big" id="attCheckOut">—</div></div>
-            </div>
-            <div class="small muted" id="attTotal" style="margin:8px 0">مدت حضور: —</div>
-            <div class="toolbar" style="margin-bottom:0">
-              <button class="btn btn-primary btn-sm" id="btnAttClockIn">ثبت ورود</button>
-              <button class="btn btn-sm" id="btnAttClockOut">ثبت خروج</button>
-            </div>
-            <label class="field" style="margin-top:10px"><span>نوع کار امروز</span>
-              <select id="attWorkMode"><option value="office">حضوری در شرکت</option><option value="remote">دورکاری</option><option value="mission">مأموریت</option></select>
-            </label>
-          </div>
-          <div class="card">
-            <h3>📊 خلاصه ماه</h3>
-            <div class="att-summary">
-              <div><div class="small muted">روزهای حضور</div><div class="att-big" id="attDaysPresent">—</div></div>
-              <div><div class="small muted">مجموع کارکرد</div><div class="att-big" id="attMonthTotal">—</div></div>
-            </div>
-            <button class="btn btn-sm btn-block" style="margin-top:12px" id="btnAttExport">📥 خروجی اکسل حضور</button>
-          </div>
-          <div class="card">
-            <h3>🔎 نمایش ماه</h3>
-            <div class="form-row">
-              <label class="field"><span>ماه</span><select id="attMonth"></select></label>
-              <label class="field"><span>سال</span><input type="number" id="attYear" min="1390" max="1420"></label>
-            </div>
-            <?php if ($isManager): ?>
-            <label class="field"><span>کارمند</span><select id="attUser"><option value="">— همه کارمندان / خودم —</option><?php foreach ($attendanceUsers as $a): ?><option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?><?= ((int) $a['is_active'] === 0 ? ' (غیرفعال)' : '') ?><?= ($a['role'] === 'admin' ? ' — مدیر' : '') ?></option><?php endforeach; ?></select></label>
-            <?php endif; ?>
-            <button class="btn btn-sm btn-block" id="btnAttLoad">نمایش سوابق</button>
-            <?php if ($isManager): ?>
-            <button class="btn btn-sm btn-block" id="btnAttManual" style="margin-top:8px">📝 ثبت دستی حضور کارمند</button>
-            <?php endif; ?>
-          </div>
-        </div>
-
-        <?php if ($isManager): ?>
-        <div class="card" style="margin-bottom:16px">
-          <h3>👥 حضور تیم امروز <span class="small muted" id="attTeamDate" style="font-weight:400"></span></h3>
-          <div id="attTeamList"><div class="loading"><div class="spinner"></div></div></div>
-        </div>
-        <?php endif; ?>
-
-        <div class="card">
-          <h3>📅 سوابق حضور ماهانه</h3>
-          <div class="table-wrap" style="border:0">
-            <table class="tbl">
-              <thead><tr><?php if ($isManager): ?><th>کارمند</th><?php endif; ?><th>تاریخ شمسی</th><th>روز</th><th>ورود</th><th>خروج</th><th>مجموع</th><th>نوع کار</th></tr></thead>
-              <tbody id="attendanceBody"><tr><td colspan="6" class="center muted">برای مشاهده، دکمه «نمایش سوابق» را بزنید.</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================= مرخصی‌ها ================= -->
-      <section class="section" id="section-leaves">
-        <div class="toolbar">
-          <h3 style="flex:1">درخواست‌های مرخصی</h3>
-          <button class="btn btn-primary btn-sm" id="btnNewLeave">🌴 درخواست مرخصی</button>
-          <a class="btn btn-sm" href="export.php?type=leaves&format=csv">📥 خروجی اکسل</a>
-        </div>
-        <div class="table-wrap">
-          <table class="tbl">
-            <thead><tr><th>کارمند</th><th>نوع</th><th>از تاریخ</th><th>تا تاریخ</th><th>ساعت</th><th>دلیل</th><th>وضعیت</th><th>عملیات</th></tr></thead>
-            <tbody id="leavesBody"><tr><td colspan="8"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
-          </table>
-        </div>
-      </section>
 
       <!-- ================= اطلاعیه‌ها ================= -->
       <section class="section" id="section-announcements">

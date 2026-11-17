@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $companyName = get_setting('company_name', APP_NAME);
-$companySlogan = get_setting('company_slogan', 'سامانه یکپارچه مدیریت تسک‌ها، حضور و غیاب و پروژه‌های شرکت');
+$companySlogan = get_setting('company_slogan', 'سامانه یکپارچه مدیریت تسک‌ها و پروژه‌های شرکت');
 $todayHuman = Jalali::toHuman(today_date(), true, true);
 $todayJalali = Jalali::toDateString(today_date(), true);
 $csrf = csrf_token();
