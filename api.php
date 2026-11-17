@@ -1412,8 +1412,14 @@ try {
         case 'notification_read': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $id = (int) ($data['id'] ?? 0);
-            Database::execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [$id, $uid]);
-            json_success([]);
+            if ($id <= 0) json_error('شناسه اعلان نامعتبر است.');
+            // فقط اعلان متعلق به همین کاربر خوانده می‌شود
+            $notif = Database::fetchOne('SELECT id, is_read FROM notifications WHERE id = ? AND user_id = ? LIMIT 1', [$id, $uid]);
+            if (!$notif) json_error('اعلان موردنظر یافت نشد.', 404);
+            if ((int) $notif['is_read'] === 0) {
+                Database::execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [$id, $uid]);
+            }
+            json_success(['already_read' => (int) $notif['is_read'] === 1]);
             break;
         }
 
