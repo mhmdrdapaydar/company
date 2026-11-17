@@ -25,6 +25,10 @@
      */
     createVad: function (ctx, stream, opts) {
       opts = opts || {};
+      // ورودی نامعتبر → VAD بی‌اثر، نه استثنا (فراخوان‌کننده باید بدون try/catch امن باشد)
+      if (!ctx || typeof ctx.createMediaStreamSource !== 'function' || !stream) {
+        return { stop: function () {}, getLevel: function () { return 0; }, hasSpeech: function () { return false; } };
+      }
       var silenceMs = opts.silenceMs || 1800;
       var threshold = opts.threshold || 0.035;
       var maxMs = opts.maxMs || 60000;

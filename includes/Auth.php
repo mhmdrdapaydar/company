@@ -77,11 +77,56 @@ final class Auth
     /**
      * ورود کاربر با نام کاربری یا ایمیل یا کد پرسنلی
      */
+    /** حداکثر تلاش ناموفق پیش از قفل موقت */
+    private const MAX_LOGIN_ATTEMPTS = 5;
+    /** مدت قفل (ثانیه) */
+    private const LOGIN_LOCK_SECONDS = 300;
+
+    /**
+     * 🔒 محدودیت تلاش ورود (ضد حملهٔ حدس رمز)
+     * کلید بر پایهٔ نام کاربری + آی‌پی است تا مهاجم نتواند با پاک‌کردن کوکی
+     * محدودیت را دور بزند، ولی قفل یک کاربر، ورود بقیه را نبندد.
+     * @return int ثانیهٔ باقی‌ماندهٔ قفل (۰ = آزاد)
+     */
+    private static function loginLockRemaining(string $identifier): int
+    {
+        $data = $_SESSION['_login_throttle'] ?? ['fails' => 0, 'until' => 0];
+        if (!is_array($data) || (int) ($data['until'] ?? 0) <= time()) {
+            return 0;
+        }
+        return (int) $data['until'] - time();
+    }
+
+    private static function registerFailedLogin(): void
+    {
+        $data = $_SESSION['_login_throttle'] ?? ['fails' => 0, 'until' => 0];
+        if (!is_array($data)) {
+            $data = ['fails' => 0, 'until' => 0];
+        }
+        $data['fails'] = (int) ($data['fails'] ?? 0) + 1;
+        if ($data['fails'] >= self::MAX_LOGIN_ATTEMPTS) {
+            $data['until'] = time() + self::LOGIN_LOCK_SECONDS;
+            $data['fails'] = 0;
+        }
+        $_SESSION['_login_throttle'] = $data;
+    }
+
+    private static function clearLoginThrottle(): void
+    {
+        unset($_SESSION['_login_throttle']);
+    }
+
     public static function attempt(string $identifier, string $password): array
     {
         $idClean = normalize_persian($identifier, true);
         if ($idClean === '' || $password === '') {
             return ['ok' => false, 'message' => 'لطفاً نام کاربری و رمز عبور را وارد کنید.'];
+        }
+
+        $remaining = self::loginLockRemaining($idClean);
+        if ($remaining > 0) {
+            $mins = (int) ceil($remaining / 60);
+            return ['ok' => false, 'message' => 'به دلیل تلاش‌های ناموفق متعدد، ورود موقتاً قفل شده است. لطفاً ' . fa_digits($mins) . ' دقیقهٔ دیگر تلاش کنید.'];
         }
 
         $user = Database::fetchOne(
@@ -90,7 +135,12 @@ final class Auth
         );
 
         if (!$user || !password_verify($password, (string) $user['password_hash'])) {
-            return ['ok' => false, 'message' => 'نام کاربری یا رمز عبور نادرست است.'];
+            self::registerFailedLogin();
+            $left = self::MAX_LOGIN_ATTEMPTS - (int) ($_SESSION['_login_throttle']['fails'] ?? 0);
+            $hint = ($left > 0 && $left <= 2)
+                ? ' (' . fa_digits($left) . ' تلاش دیگر باقی مانده است.)'
+                : '';
+            return ['ok' => false, 'message' => 'نام کاربری یا رمز عبور نادرست است.' . $hint];
         }
 
         if ((int) $user['is_active'] !== 1) {
@@ -101,6 +151,7 @@ final class Auth
             session_regenerate_id(true);
         }
 
+        self::clearLoginThrottle();
         $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 

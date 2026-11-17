@@ -673,6 +673,26 @@
         toast('لطفاً صدا ضبط کنید، فایل صوتی بدهید یا متن فرمان را بنویسید.', 'error');
         return;
       }
+      // 🔇 اگر فقط صدا داریم (متنی تایپ نشده) و ضبط کاملاً ساکت است،
+      // به‌جای رفت‌وبرگشت شبکه و پیام مبهم «متنی پیدا نشد»، فوراً بگو.
+      var silentCheck = (!transcript && this.audioBlob && window.OfflineAudio && window.OfflineAudio.isSilentBlob)
+        ? window.OfflineAudio.isSilentBlob(this.audioBlob).catch(function () { return false; })
+        : Promise.resolve(false);
+
+      silentCheck.then(function (isSilent) {
+        if (isSilent && !transcript) {
+          self.hideProcessing && self.hideProcessing();
+          document.getElementById('recStatus').textContent = '🔇 ضبط تقریباً ساکت بود.';
+          toast('صدای ضبط‌شده تقریباً ساکت است — میکروفن را بررسی کنید و نزدیک‌تر صحبت کنید، یا متن فرمان را بنویسید.', 'error', 6000);
+          return;
+        }
+        self.runProcess(transcript, forceText);
+      });
+    },
+
+    /** ارسال واقعی به سرور (پس از بررسی سکوت) */
+    runProcess: function (transcript, forceText) {
+      var self = this;
       this.showProcessing('در حال پردازش صدا با هوش مصنوعی رایگان...');
       var fd = new FormData();
       fd.append('transcript', transcript);

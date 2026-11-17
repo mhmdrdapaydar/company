@@ -561,7 +561,15 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $sub = Database::fetchOne('SELECT * FROM task_subtasks WHERE id = ?', [(int) ($data['id'] ?? 0)]);
             if (!$sub) json_error('زیرتسک یافت نشد.', 404);
-            get_task_or_fail((int) $sub['task_id']);
+            $subTask = get_task_or_fail((int) $sub['task_id']);
+            // 🔒 «دیدن تسک» یا «مسئول بودن» کافی نیست: مسئول تسک نباید بتواند
+            // چک‌لیست و محتوای ساختهٔ دیگران را پاک کند. زیرتسک مالک جداگانه ندارد
+            // و متعلق به تسک است؛ پس فقط سازندهٔ تسک یا مدیر شرکت مجاز است.
+            // (مسئول می‌تواند تیک بزند/بردارد، ولی حذف ساختار چک‌لیست نه.)
+            $taskOwner = (int) ($subTask['created_by'] ?? 0);
+            if (!($isAdmin || $taskOwner === $uid)) {
+                json_error('فقط سازندهٔ تسک یا مدیر شرکت می‌تواند زیرتسک را حذف کند. برای علامت‌گذاری از «تیک» استفاده کنید.', 403);
+            }
             Database::execute('DELETE FROM task_subtasks WHERE id = ?', [(int) $sub['id']]);
             json_success([], 'زیرتسک حذف شد.');
             break;
@@ -610,7 +618,13 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $att = Database::fetchOne('SELECT * FROM task_attachments WHERE id = ?', [(int) ($data['id'] ?? 0)]);
             if (!$att) json_error('پیوست یافت نشد.', 404);
-            get_task_or_fail((int) $att['task_id']);
+            $attTask = get_task_or_fail((int) $att['task_id']);
+            // 🔒 فقط آپلودکننده، سازندهٔ تسک یا مدیر — نه هر کسی که تسک را می‌بیند
+            $attOwner = (int) ($att['user_id'] ?? 0);
+            $attTaskOwner = (int) ($attTask['created_by'] ?? 0);
+            if (!($isAdmin || ($attOwner > 0 && $attOwner === $uid) || $attTaskOwner === $uid)) {
+                json_error('فقط آپلودکنندهٔ فایل، سازندهٔ تسک یا مدیر شرکت می‌تواند آن را حذف کند.', 403);
+            }
             Database::execute('DELETE FROM task_attachments WHERE id = ?', [(int) $att['id']]);
             $path = ATTACHMENTS_PATH . '/' . basename((string) $att['stored_name']);
             if (is_file($path)) @unlink($path);
@@ -894,7 +908,17 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
+            if ($id <= 0) json_error('شناسهٔ واحد سازمانی نامعتبر است.');
+            $dep = Database::fetchOne('SELECT * FROM departments WHERE id = ? LIMIT 1', [$id]);
+            // 🔒 قبلاً حتی برای شناسهٔ ناموجود «ok:true» برمی‌گشت (پیام موفقیت دروغین)
+            if (!$dep) json_error('واحد سازمانی موردنظر یافت نشد.', 404);
+            // 🔒 حذف واحدی که کارمند دارد، کاربران را بی‌واحد می‌کند؛ باید صریح رد شود
+            $members = (int) Database::fetchValue('SELECT COUNT(*) FROM users WHERE department_id = ?', [$id], 0);
+            if ($members > 0) {
+                json_error('این واحد ' . fa_digits($members) . ' کارمند دارد. اول واحد آن‌ها را تغییر دهید، سپس حذف کنید.', 409);
+            }
             Database::execute('DELETE FROM departments WHERE id = ?', [$id]);
+            log_activity($uid, 'delete_department', 'department', $id, 'واحد سازمانی «' . $dep['name'] . '» حذف شد.');
             json_success([], 'واحد سازمانی حذف شد.');
             break;
         }
@@ -1337,13 +1361,23 @@ try {
             if (!in_array($status, ['approved', 'rejected'], true)) json_error('وضعیت بررسی نامعتبر است.');
             $leave = Database::fetchOne('SELECT * FROM leave_requests WHERE id = ?', [$id]);
             if (!$leave) json_error('درخواست مرخصی یافت نشد.', 404);
+            // 🔒 جلوگیری از «تأیید خودی»: مدیر نباید مرخصی خودش را تأیید/رد کند.
+            // (مدیر کل مستثنی است، چون تنها کسی است که می‌تواند پرونده را ببندد.)
+            if ((int) $leave['user_id'] === $uid && !$isAdmin) {
+                json_error('نمی‌توانید درخواست مرخصی خودتان را بررسی کنید. این کار باید توسط مدیر دیگری انجام شود.', 403);
+            }
+            // 🔒 بررسی دوبارهٔ یک پروندهٔ بسته‌شده سابقه را دست‌کاری می‌کند
+            if (($leave['status'] ?? 'pending') !== 'pending') {
+                json_error('این درخواست قبلاً بررسی شده است و قابل تغییر نیست.', 409);
+            }
             Database::execute(
                 'UPDATE leave_requests SET status = ?, reviewed_by = ?, review_note = ?, reviewed_at = ? WHERE id = ?',
                 [$status, $uid, clean_line($data['review_note'] ?? '', 400), now_datetime(), $id]
             );
-            create_notification((int) $leave['user_id'], $uid, 'leave_reviewed', $status === 'approved' ? 'مرخصی شما تأیید شد ✅' : 'مرخصی شما رد شد', 'درخواست مرخصی شما ' . leave_status_label($status) . ' شد.', 'leave', $id);
-            log_activity($uid, 'leave_review', 'leave', $id, 'درخواست مرخصی ' . leave_status_label($status) . ' شد.');
-            json_success([], 'درخواست مرخصی ' . leave_status_label($status) . ' شد.');
+            $verdict = $status === 'approved' ? 'تأیید' : 'رد';
+            create_notification((int) $leave['user_id'], $uid, 'leave_reviewed', $status === 'approved' ? 'مرخصی شما تأیید شد ✅' : 'مرخصی شما رد شد', 'درخواست مرخصی شما ' . $verdict . ' شد.', 'leave', $id);
+            log_activity($uid, 'leave_review', 'leave', $id, 'درخواست مرخصی ' . $verdict . ' شد.');
+            json_success([], 'درخواست مرخصی ' . $verdict . ' شد.');
             break;
         }
 
@@ -1387,7 +1421,12 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
-            if ($id <= 0 || !Database::fetchOne('SELECT id FROM announcements WHERE id = ? LIMIT 1', [$id])) json_error('اطلاعیه موردنظر یافت نشد.', 404);
+            $ann = $id > 0 ? Database::fetchOne('SELECT * FROM announcements WHERE id = ? LIMIT 1', [$id]) : null;
+            if (!$ann) json_error('اطلاعیه موردنظر یافت نشد.', 404);
+            // 🔒 هر مدیری نباید اطلاعیهٔ مدیر دیگر (حتی مدیرکل) را پاک کند
+            if (!($isAdmin || (int) $ann['created_by'] === $uid)) {
+                json_error('فقط نویسندهٔ اطلاعیه یا مدیر شرکت می‌تواند آن را حذف کند.', 403);
+            }
             Database::execute('DELETE FROM announcements WHERE id = ?', [$id]);
             log_activity($uid, 'delete_announcement', 'announcement', $id, 'اطلاعیه حذف شد.');
             json_success([], 'اطلاعیه حذف شد.');
