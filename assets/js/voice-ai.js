@@ -1,0 +1,564 @@
+/* همکار پلاس — دستیار صوتی هوش مصنوعی
+ * ضبط صدا با MediaRecorder + موج زنده + تبدیل گفتار فارسی به متن (Web Speech fa-IR)
+ * ارسال صدا به سرور برای پردازش رایگان (Groq / Gemini / Pollinations / موتور داخلی)
+ */
+(function (global) {
+  'use strict';
+
+  var FAT = window.JalaliJS ? window.JalaliJS.toFa : function (x) { return String(x); };
+
+  var VoiceAI = {
+    api: null,          // تابع ارسال درخواست (از app.js تزریق می‌شود)
+    options: {},
+    stream: null,
+    recorder: null,
+    chunks: [],
+    audioBlob: null,
+    audioUrl: null,
+    analyser: null,
+    audioCtx: null,
+    rafId: null,
+    timerId: null,
+    seconds: 0,
+    recording: false,
+    recognition: null,
+    recActive: false,
+    finalTranscript: '',
+    interimTranscript: '',
+    previewTasks: [],
+    previewMeta: null,
+    pendingAutoCreate: false,
+
+    tpl: function () { return ''; },
+
+    init: function (opts) {
+      this.api = opts.api;
+      this.options = opts;
+      this.build();
+      this.bind();
+    },
+
+    build: function () {
+      if (document.getElementById('modalVoice')) return;
+      var users = (this.options.users || []).map(function (u) {
+        return '<option value="' + u.id + '">' + esc(u.full_name) + (u.department_name ? ' — ' + esc(u.department_name) : '') + '</option>';
+      }).join('');
+      var projects = (this.options.projects || []).map(function (p) {
+        return '<option value="' + p.id + '">' + esc(p.name) + '</option>';
+      }).join('');
+
+      var html = '' +
+        '<div class="modal-backdrop" id="modalVoice">' +
+        '  <div class="modal modal-lg">' +
+        '    <div class="modal-head">' +
+        '      <h3>🎙️ دستیار صوتی هوش مصنوعی</h3>' +
+        '      <button class="icon-btn" data-voice-close title="بستن">✕</button>' +
+        '    </div>' +
+        '    <div class="alert alert-info small">✨ به فارسی صحبت کنید؛ مثلاً: «فردا ساعت ۱۰ صبح جلسه با تیم بازاریابی برای پروژه وب‌سایت، اولویت بالا، با سارا». هوش مصنوعی خودش موضوع، روز شمسی، ساعت، مسئول و زیرتسک‌ها را تشخیص می‌دهد.</div>' +
+        '    <div class="voice-recorder">' +
+        '      <canvas class="wave-canvas" id="waveCanvas" width="800" height="90"></canvas>' +
+        '      <div class="rec-timer" id="recTimer">۰۰:۰۰</div>' +
+        '      <button type="button" class="rec-btn" id="recBtn" title="شروع/پایان ضبط">🎙️</button>' +
+        '      <div class="small muted" id="recStatus" style="margin-top:8px">برای شروع ضبط، روی میکروفن بزنید.</div>' +
+        '      <div id="speechHint" class="small muted" style="margin-top:4px"></div>' +
+        '    </div>' +
+        '    <div id="audioPlayWrap" class="hidden" style="margin:12px 0;text-align:center">' +
+        '      <audio id="voiceAudio" controls class="voice-player" style="max-width:100%"></audio>' +
+        '    </div>' +
+        '    <div class="toolbar" style="margin:12px 0">' +
+        '      <label class="btn btn-sm" style="cursor:pointer">📁 آپلود فایل صوتی<input type="file" id="voiceFileInput" accept="audio/*" class="hidden"></label>' +
+        '      <button type="button" class="btn btn-sm" id="btnTranscribeTry">📝 تشخیص گفتار مرورگر</button>' +
+        '      <span class="small muted">یا متن فرمان را بنویسید:</span>' +
+        '    </div>' +
+        '    <label class="field">' +
+        '      <span>متن فرمان صوتی (قابل ویرایش)</span>' +
+        '      <textarea id="voiceTranscript" rows="3" placeholder="مثلاً: پس‌فردا ساعت ۹ و نیم صبح تماس با مشتری برای پروژه فروش، اولویت فوری، زیرتسک: آماده‌سازی فایل قیمت، ارسال ایمیل پیگیری"></textarea>' +
+        '    </label>' +
+        '    <div class="checkline">' +
+        '      <input type="checkbox" id="voiceAutoCreate">' +
+        '      <label for="voiceAutoCreate">ثبت خودکار تسک‌ها بدون نمایش پیش‌نمایش</label>' +
+        '    </div>' +
+        '    <div class="toolbar" style="margin-top:6px">' +
+        '      <button type="button" class="btn btn-primary" id="btnVoiceProcess">🤖 پردازش هوشمند</button>' +
+        '      <button type="button" class="btn" id="btnVoiceReset">🔄 پاک‌سازی</button>' +
+        '      <button type="button" class="btn" id="btnVoiceManual" data-voice-close>✍️ ثبت دستی تسک</button>' +
+        '    </div>' +
+        '    <div id="voiceProcessing" class="loading hidden"><div class="spinner"></div>در حال پردازش صدا با هوش مصنوعی رایگان...</div>' +
+        '    <div id="voicePreviewWrap" class="hidden">' +
+        '      <div class="toolbar" style="justify-content:space-between">' +
+        '        <span class="provider-tag" id="voiceProvider">—</span>' +
+        '        <span class="small muted">پیش‌نمایش را بررسی و در صورت نیاز ویرایش کنید.</span>' +
+        '      </div>' +
+        '      <div id="voicePreviewList"></div>' +
+        '      <div class="toolbar">' +
+        '        <button type="button" class="btn btn-primary btn-lg" id="btnVoiceConfirm">✅ ثبت تسک‌ها در تقویم شمسی</button>' +
+        '        <button type="button" class="btn" id="btnVoiceReprocess">🔁 پردازش مجدد متن</button>' +
+        '      </div>' +
+        '    </div>' +
+        '    <template id="voiceTaskTpl">' +
+        '      <div class="ai-preview-card" data-idx="">' +
+        '        <div class="toolbar" style="margin-bottom:6px"><h5 style="flex:1">تسک <span class="tnum"></span></h5>' +
+        '          <button type="button" class="icon-btn" data-remove title="حذف از لیست">🗑️</button></div>' +
+        '        <label class="field"><span>عنوان تسک</span><input type="text" data-f="title"></label>' +
+        '        <div class="form-row">' +
+        '          <label class="field"><span>تاریخ سررسید (شمسی)</span><input type="text" data-f="due_date_jalali" placeholder="۱۴۰۵/۰۸/۲۶"></label>' +
+        '          <label class="field"><span>ساعت</span><input type="time" data-f="due_time"></label>' +
+        '        </div>' +
+        '        <div class="form-row">' +
+        '          <label class="field"><span>اولویت</span><select data-f="priority"><option value="low">کم</option><option value="medium">متوسط</option><option value="high">زیاد</option><option value="urgent">فوری</option></select></label>' +
+        '          <label class="field"><span>مدت تخمینی (دقیقه)</span><input type="number" min="0" max="1440" data-f="estimated_minutes"></label>' +
+        '        </div>' +
+        '        <div class="form-row">' +
+        '          <label class="field"><span>مسئول انجام</span><select data-f="assigned_to">' + users + '</select></label>' +
+        '          <label class="field"><span>پروژه</span><select data-f="project_id"><option value="">بدون پروژه</option>' + projects + '</select></label>' +
+        '        </div>' +
+        '        <label class="field"><span>زیرتسک‌ها (هر خط یک مورد)</span><textarea data-f="subtasks" rows="2"></textarea></label>' +
+        '        <label class="field"><span>توضیحات</span><textarea data-f="description" rows="2"></textarea></label>' +
+        '        <div class="ai-meta"><span class="badge badge-future" data-badge="date"></span><span class="badge badge-medium" data-badge="prio"></span><span class="badge badge-todo" data-badge="assignee"></span></div>' +
+        '      </div>' +
+        '    </template>' +
+        '  </div>' +
+        '</div>';
+      document.body.insertAdjacentHTML('beforeend', html);
+      this.el = document.getElementById('modalVoice');
+    },
+
+    bind: function () {
+      var self = this;
+      var modal = this.el;
+      modal.addEventListener('click', function (e) { if (e.target === modal) self.close(); });
+      modal.querySelectorAll('[data-voice-close]').forEach(function (b) {
+        b.addEventListener('click', function () { self.close(); self.options.onManual && self.options.onManual(); });
+      });
+      document.getElementById('recBtn').addEventListener('click', function () { self.toggleRecord(); });
+      document.getElementById('btnVoiceProcess').addEventListener('click', function () { self.process(false); });
+      document.getElementById('btnVoiceReprocess').addEventListener('click', function () { self.process(true); });
+      document.getElementById('btnVoiceConfirm').addEventListener('click', function () { self.confirm(); });
+      document.getElementById('btnVoiceReset').addEventListener('click', function () { self.reset(); });
+      document.getElementById('voiceFileInput').addEventListener('change', function (e) { self.useUploadedFile(e.target.files[0]); });
+      document.getElementById('btnTranscribeTry').addEventListener('click', function () { self.startBrowserSpeech(true); });
+      document.getElementById('voicePreviewList').addEventListener('click', function (e) {
+        var rm = e.target.closest('[data-remove]');
+        if (rm) {
+          var card = rm.closest('.ai-preview-card');
+          var idx = Number(card.getAttribute('data-idx'));
+          self.previewTasks.splice(idx, 1);
+          self.renderPreview();
+        }
+      });
+      var autoChk = document.getElementById('voiceAutoCreate');
+      if (this.options.autoCreate) autoChk.checked = true;
+      document.getElementById('voiceTranscript').addEventListener('input', function () {
+        self.finalTranscript = this.value;
+      });
+      window.addEventListener('beforeunload', function () { self.stopStream(); });
+    },
+
+    open: function (prefill) {
+      this.reset();
+      if (prefill && prefill.transcript) {
+        document.getElementById('voiceTranscript').value = prefill.transcript;
+        this.finalTranscript = prefill.transcript;
+      }
+      this.el.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      setTimeout(function () { drawIdleWave(document.getElementById('waveCanvas')); }, 60);
+    },
+
+    close: function () {
+      this.stopRecord(true);
+      this.el.classList.remove('open');
+      document.body.style.overflow = '';
+    },
+
+    reset: function () {
+      this.stopRecord(true);
+      this.audioBlob = null;
+      if (this.audioUrl) { URL.revokeObjectURL(this.audioUrl); this.audioUrl = null; }
+      document.getElementById('audioPlayWrap').classList.add('hidden');
+      document.getElementById('voiceAudio').removeAttribute('src');
+      document.getElementById('voiceTranscript').value = '';
+      document.getElementById('voiceFileInput').value = '';
+      document.getElementById('voicePreviewWrap').classList.add('hidden');
+      document.getElementById('voicePreviewList').innerHTML = '';
+      document.getElementById('voiceProcessing').classList.add('hidden');
+      document.getElementById('voiceProvider').textContent = '—';
+      document.getElementById('recTimer').textContent = '۰۰:۰۰';
+      document.getElementById('recStatus').textContent = 'برای شروع ضبط، روی میکروفن بزنید.';
+      document.getElementById('btnVoiceProcess').disabled = false;
+      this.finalTranscript = '';
+      this.interimTranscript = '';
+      this.previewTasks = [];
+      this.previewMeta = null;
+      this.seconds = 0;
+      var hint = document.getElementById('speechHint');
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      hint.textContent = SR
+        ? '🎧 تشخیص گفتار فارسی مرورگر فعال است؛ متن هم‌زمان با صحبت شما نوشته می‌شود.'
+        : 'ℹ️ مرورگر شما تشخیص گفتار ندارد؛ صدا ضبط و برای پردازش به سرور ارسال می‌شود (Groq/Gemini رایگان یا موتور فارسی داخلی).';
+      setTimeout(function () { drawIdleWave(document.getElementById('waveCanvas')); }, 50);
+    },
+
+    /* ---------- ضبط صدا ---------- */
+    toggleRecord: function () {
+      if (this.recording) this.stopRecord();
+      else this.startRecord();
+    },
+
+    startRecord: function () {
+      var self = this;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast('مرورگر شما از ضبط صدا پشتیبانی نمی‌کند. می‌توانید فایل صوتی آپلود کنید یا متن بنویسید.', 'error');
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
+        self.stream = stream;
+        self.chunks = [];
+        var mime = '';
+        ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].forEach(function (m) {
+          if (!mime && window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) mime = m;
+        });
+        try {
+          self.recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        } catch (err) {
+          toast('خطا در راه‌اندازی ضبط صدا: ' + err.message, 'error');
+          self.stopStream();
+          return;
+        }
+        self.recorder.ondataavailable = function (e) { if (e.data && e.data.size > 0) self.chunks.push(e.data); };
+        self.recorder.onstop = function () { self.finishRecording(); };
+        self.recorder.start(250);
+        self.recording = true;
+        self.seconds = 0;
+        self.setRecordingUI(true);
+        self.startWaveform(stream);
+        self.startTimer();
+        self.startBrowserSpeech(false);
+      }).catch(function (err) {
+        var msg = 'دسترسی به میکروفن امکان‌پذیر نیست.';
+        if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) msg = 'اجازه دسترسی به میکروفن داده نشد. از تنظیمات مرورگر اجازه دهید (سایت باید HTTPS باشد).';
+        else if (err && err.name === 'NotFoundError') msg = 'میکروفنی روی این دستگاه پیدا نشد.';
+        toast(msg, 'error');
+      });
+    },
+
+    stopRecord: function (silent) {
+      if (this.recorder && this.recorder.state !== 'inactive') {
+        try { this.recorder.stop(); } catch (e) {}
+      }
+      this.stopBrowserSpeech();
+      this.stopTimer();
+      this.stopWaveform();
+      this.recording = false;
+      this.setRecordingUI(false);
+      if (silent) this.stopStream();
+    },
+
+    finishRecording: function () {
+      var self = this;
+      if (!this.chunks.length) return;
+      var type = (this.recorder && this.recorder.mimeType) || 'audio/webm';
+      this.audioBlob = new Blob(this.chunks, { type: type.indexOf('mp4') >= 0 ? 'audio/mp4' : 'audio/webm' });
+      if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+      this.audioUrl = URL.createObjectURL(this.audioBlob);
+      var audio = document.getElementById('voiceAudio');
+      audio.src = this.audioUrl;
+      document.getElementById('audioPlayWrap').classList.remove('hidden');
+      this.stopStream();
+      document.getElementById('recStatus').textContent = '✅ ضبط پایان یافت. حالا «پردازش هوشمند» را بزنید.';
+      self.finalTranscript = (document.getElementById('voiceTranscript').value || '') + (this.finalTranscript && !document.getElementById('voiceTranscript').value ? this.finalTranscript : '');
+      drawIdleWave(document.getElementById('waveCanvas'));
+    },
+
+    stopStream: function () {
+      if (this.stream) {
+        try { this.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+        this.stream = null;
+      }
+    },
+
+    setRecordingUI: function (on) {
+      var btn = document.getElementById('recBtn');
+      btn.classList.toggle('recording', on);
+      btn.textContent = on ? '⏹️' : '🎙️';
+      document.getElementById('recStatus').textContent = on ? '🔴 در حال ضبط... برای پایان دوباره بزنید.' : document.getElementById('recStatus').textContent;
+      document.getElementById('btnVoiceProcess').disabled = on;
+    },
+
+    startTimer: function () {
+      var self = this;
+      this.timerId = setInterval(function () {
+        self.seconds++;
+        var m = Math.floor(self.seconds / 60), s = self.seconds % 60;
+        document.getElementById('recTimer').textContent = FAT(String(m).padStart(2, '0')) + ':' + FAT(String(s).padStart(2, '0'));
+        if (self.seconds >= 180) { self.stopRecord(); toast('حداکثر زمان ضبط ۳ دقیقه است.', 'info'); }
+      }, 1000);
+    },
+    stopTimer: function () { if (this.timerId) { clearInterval(this.timerId); this.timerId = null; } },
+
+    /* ---------- موج صوتی ---------- */
+    startWaveform: function (stream) {
+      var canvas = document.getElementById('waveCanvas');
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {
+        this.audioCtx = new AC();
+        var source = this.audioCtx.createMediaStreamSource(stream);
+        this.analyser = this.audioCtx.createAnalyser();
+        this.analyser.fftSize = 256;
+        source.connect(this.analyser);
+      } catch (e) { return; }
+      var ctx = canvas.getContext('2d');
+      var data = new Uint8Array(this.analyser.frequencyBinCount);
+      var self = this;
+      var draw = function () {
+        self.rafId = requestAnimationFrame(draw);
+        self.analyser.getByteFrequencyData(data);
+        var w = canvas.width, h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        var bars = 64, bw = w / bars;
+        for (var i = 0; i < bars; i++) {
+          var v = data[i * 2] / 255;
+          var bh = Math.max(3, v * h * 0.92);
+          var hue = 172 + (v * 40);
+          ctx.fillStyle = 'hsla(' + hue + ',70%,' + (42 + v * 18) + '%,' + (0.45 + v * 0.55) + ')';
+          ctx.beginPath();
+          var x = i * bw + 1;
+          var y = (h - bh) / 2;
+          var r = Math.min(3, bw / 2);
+          ctx.roundRect ? ctx.roundRect(x, y, Math.max(2, bw - 2), bh, r) : ctx.rect(x, y, Math.max(2, bw - 2), bh);
+          ctx.fill();
+        }
+      };
+      draw();
+    },
+    stopWaveform: function () {
+      if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = null; }
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch (e) {} this.audioCtx = null; }
+      this.analyser = null;
+    },
+
+    /* ---------- تشخیص گفتار مرورگر ---------- */
+    startBrowserSpeech: function (manual) {
+      var self = this;
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        if (manual) toast('مرورگر شما از تشخیص گفتار پشتیبانی نمی‌کند. صدا را ضبط کنید تا سرور پردازش کند.', 'info');
+        return;
+      }
+      if (this.recActive) return;
+      try {
+        var rec = new SR();
+        rec.lang = 'fa-IR';
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        rec.onresult = function (event) {
+          var interim = '';
+          for (var i = event.resultIndex; i < event.results.length; i++) {
+            var txt = event.results[i][0].transcript;
+            if (event.results[i].isFinal) self.finalTranscript += (self.finalTranscript ? ' ' : '') + txt.trim();
+            else interim += txt;
+          }
+          self.interimTranscript = interim;
+          var box = document.getElementById('voiceTranscript');
+          box.value = (self.finalTranscript + ' ' + interim).trim();
+        };
+        rec.onerror = function (e) {
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            if (manual) toast('اجازه استفاده از میکروفن برای تشخیص گفتار داده نشد.', 'error');
+          } else if (e.error === 'network' && manual) {
+            toast('سرویس تشخیص گفتار مرورگر در دسترس نیست؛ صدا برای پردازش سروری ارسال خواهد شد.', 'info');
+          }
+          self.recActive = false;
+        };
+        rec.onend = function () { self.recActive = false; if (self.recording) { try { rec.start(); } catch (e) {} } };
+        rec.start();
+        this.recognition = rec;
+        this.recActive = true;
+      } catch (e) { this.recActive = false; }
+    },
+    stopBrowserSpeech: function () {
+      if (this.recognition) {
+        try { this.recognition.onend = null; this.recognition.stop(); } catch (e) {}
+        this.recognition = null;
+      }
+      this.recActive = false;
+    },
+
+    useUploadedFile: function (file) {
+      if (!file) return;
+      if (!/^audio\//.test(file.type) && !/\.(mp3|wav|ogg|m4a|webm|aac|flac)$/i.test(file.name)) {
+        toast('فقط فایل صوتی مجاز است.', 'error');
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) { toast('حجم فایل صوتی بیش از ۲۰ مگابایت است.', 'error'); return; }
+      this.audioBlob = file;
+      if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+      this.audioUrl = URL.createObjectURL(file);
+      var audio = document.getElementById('voiceAudio');
+      audio.src = this.audioUrl;
+      document.getElementById('audioPlayWrap').classList.remove('hidden');
+      document.getElementById('recStatus').textContent = '📁 فایل «' + file.name + '» آماده پردازش است.';
+      document.querySelector('#voiceFileInput').value = '';
+    },
+
+    /* ---------- پردازش سروری ---------- */
+    process: function (forceText) {
+      var self = this;
+      var transcript = document.getElementById('voiceTranscript').value.trim();
+      if (!transcript && !this.audioBlob) {
+        toast('لطفاً صدا ضبط کنید، فایل صوتی بدهید یا متن فرمان را بنویسید.', 'error');
+        return;
+      }
+      document.getElementById('voiceProcessing').classList.remove('hidden');
+      document.getElementById('voicePreviewWrap').classList.add('hidden');
+      document.getElementById('btnVoiceProcess').disabled = true;
+      var fd = new FormData();
+      fd.append('transcript', transcript);
+      fd.append('voice_duration_sec', String(this.seconds || 0));
+      if (this.audioBlob && !forceText) fd.append('audio', this.audioBlob, 'voice.' + ((this.audioBlob.type && this.audioBlob.type.indexOf('mp4') >= 0) ? 'm4a' : 'webm'));
+
+      this.api('voice_preview', fd, { form: true }).then(function (res) {
+        document.getElementById('voiceProcessing').classList.add('hidden');
+        document.getElementById('btnVoiceProcess').disabled = false;
+        self.previewTasks = res.tasks || [];
+        self.previewMeta = {
+          transcript: res.transcript || transcript,
+          provider: res.provider || '',
+          voice_file: res.voice_file || null,
+          voice_duration_sec: res.voice_duration_sec || self.seconds || 0
+        };
+        document.getElementById('voiceTranscript').value = self.previewMeta.transcript;
+        document.getElementById('voiceProvider').textContent = '🤖 ' + (res.provider || 'موتور هوشمند فارسی');
+        document.getElementById('voicePreviewWrap').classList.remove('hidden');
+        self.renderPreview();
+        toast(res.message || 'پردازش انجام شد. پیش‌نمایش را بررسی کنید.', 'success');
+        if (document.getElementById('voiceAutoCreate').checked) {
+          self.confirm();
+        }
+      }).catch(function (err) {
+        document.getElementById('voiceProcessing').classList.add('hidden');
+        document.getElementById('btnVoiceProcess').disabled = false;
+        if (err && err.message) toast(err.message, 'error');
+      });
+    },
+
+    renderPreview: function () {
+      var wrap = document.getElementById('voicePreviewList');
+      var tpl = document.getElementById('voiceTaskTpl');
+      wrap.innerHTML = '';
+      if (!this.previewTasks.length) {
+        wrap.innerHTML = '<div class="empty"><span class="big">🤔</span>تسکی برای نمایش نیست. متن را واضح‌تر بنویسید.</div>';
+        return;
+      }
+      var self = this;
+      this.previewTasks.forEach(function (t, i) {
+        var node = tpl.content.firstElementChild.cloneNode(true);
+        node.setAttribute('data-idx', String(i));
+        node.querySelector('.tnum').textContent = FAT(i + 1);
+        var f = function (name) { return node.querySelector('[data-f="' + name + '"]'); };
+        f('title').value = t.title || '';
+        f('due_date_jalali').value = t.due_date_jalali_fa || t.due_date_jalali || '';
+        var tm = (t.due_time || '').match(/^(\d{1,2}):(\d{2})/);
+        f('due_time').value = tm ? (tm[1].padStart(2, '0') + ':' + tm[2]) : '';
+        f('priority').value = t.priority || 'medium';
+        f('estimated_minutes').value = t.estimated_minutes || 60;
+        if (t.assigned_to) f('assigned_to').value = String(t.assigned_to);
+        f('project_id').value = t.project_id ? String(t.project_id) : '';
+        f('subtasks').value = (t.subtasks || []).join('\n');
+        f('description').value = t.description || '';
+        node.querySelector('[data-badge="date"]').textContent = '📅 ' + (t.due_date_human || '—') + (t.due_time_fa ? ' — ساعت ' + t.due_time_fa : '');
+        var pr = node.querySelector('[data-badge="prio"]');
+        pr.className = 'badge badge-' + (t.priority || 'medium');
+        pr.textContent = '⚡ اولویت ' + (t.priority_label || '');
+        node.querySelector('[data-badge="assignee"]').textContent = '👤 ' + (t.assigned_name || '—');
+        wrap.appendChild(node);
+      });
+    },
+
+    collect: function () {
+      var out = [];
+      var self = this;
+      document.querySelectorAll('#voicePreviewList .ai-preview-card').forEach(function (node) {
+        var idx = Number(node.getAttribute('data-idx'));
+        var orig = self.previewTasks[idx] || {};
+        var f = function (name) { return node.querySelector('[data-f="' + name + '"]').value.trim(); };
+        var dateVal = f('due_date_jalali');
+        var greg = dateVal ? window.JalaliJS.parseToGregorian(dateVal) : null;
+        if (dateVal && !greg) { toast('تاریخ شمسی نامعتبر است: ' + dateVal, 'error'); throw new Error('invalid date'); }
+        var subs = f('subtasks').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+        out.push({
+          title: f('title'),
+          description: f('description'),
+          due_date: greg || '',
+          due_date_jalali: greg ? window.JalaliJS.gregorianToJalaliInput(greg) : '',
+          due_time: f('due_time'),
+          priority: f('priority'),
+          assigned_to: Number(f('assigned_to')) || 0,
+          project_id: f('project_id') ? Number(f('project_id')) : null,
+          estimated_minutes: Number(f('estimated_minutes')) || 0,
+          category: orig.category || 'عمومی',
+          tags: orig.tags || '',
+          recurrence: orig.recurrence || 'none',
+          subtasks: subs
+        });
+      });
+      return out;
+    },
+
+    confirm: function () {
+      var self = this;
+      var tasks;
+      try { tasks = this.collect(); } catch (e) { return; }
+      if (!tasks.length) { toast('تسکی برای ثبت وجود ندارد.', 'error'); return; }
+      var invalid = tasks.filter(function (t) { return !t.title; });
+      if (invalid.length) { toast('عنوان همه تسک‌ها را وارد کنید.', 'error'); return; }
+      var meta = this.previewMeta || {};
+      var fd = new FormData();
+      fd.append('tasks', JSON.stringify(tasks));
+      fd.append('voice_file', meta.voice_file || '');
+      fd.append('transcript', document.getElementById('voiceTranscript').value.trim() || meta.transcript || '');
+      fd.append('provider', meta.provider || '');
+      fd.append('voice_duration_sec', String(meta.voice_duration_sec || this.seconds || 0));
+      var btn = document.getElementById('btnVoiceConfirm');
+      btn.disabled = true;
+      this.api('voice_create', fd, { form: true }).then(function (res) {
+        btn.disabled = false;
+        toast(res.message || 'تسک‌ها ثبت شدند.', 'success');
+        self.close();
+        self.options.onCreated && self.options.onCreated(res);
+      }).catch(function (err) {
+        btn.disabled = false;
+        if (err && err.message) toast(err.message, 'error');
+      });
+    }
+  };
+
+  function drawIdleWave(canvas) {
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(15,118,110,.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var x = 0; x <= w; x += 4) {
+      var y = h / 2 + Math.sin(x / 26) * 6 + Math.sin(x / 9) * 2;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function toast(msg, type) {
+    if (window.App && window.App.toast) window.App.toast(msg, type);
+    else console.log(msg);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  global.VoiceAI = VoiceAI;
+})(window);

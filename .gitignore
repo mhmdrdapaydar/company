@@ -1,0 +1,24 @@
+# تنظیمات محلی و کلیدهای خصوصی
+config/config.local.php
+.env
+
+# فایل‌های پایگاه داده محلی و آپلودهای کاربران
+storage/database/*.sqlite
+storage/database/*.sqlite-*
+storage/database/*.db
+storage/voices/*
+!storage/voices/.gitkeep
+storage/attachments/*
+!storage/attachments/.gitkeep
+storage/sessions/*
+!storage/sessions/.gitkeep
+
+# فایل‌های سیستمی و ویرایشگر
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# پوشه تست‌های موقت توسعه
+_test/

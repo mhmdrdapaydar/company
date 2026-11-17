@@ -1,0 +1,33 @@
+# تنظیم کدگذاری پیش‌فرض UTF-8 برای پشتیبانی کامل از زبان فارسی
+AddDefaultCharset UTF-8
+
+# جلوگیری از نمایش فهرست پوشه‌ها
+Options -Indexes
+
+# تنظیم صفحه پیش‌فرض
+DirectoryIndex index.php login.php
+
+# تنظیمات پیشنهادی PHP برای آپلود ویس و فایل پیوست
+<IfModule mod_php.c>
+    php_value default_charset "UTF-8"
+    php_value upload_max_filesize "25M"
+    php_value post_max_size "30M"
+    php_value max_execution_time "60"
+</IfModule>
+
+# هدرهای امنیتی پایه
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# مسدودسازی دسترسی مستقیم به فایل‌های حساس
+<FilesMatch "^(\.env|\.git|composer\.(json|lock)|.*\.sql|.*\.sqlite)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
