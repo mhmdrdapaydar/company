@@ -1296,6 +1296,24 @@ try {
             if ($end < $start) json_error('تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد.');
             if ($reason === '') json_error('دلیل درخواست مرخصی را بنویسید.');
             $hours = max(0, (float) en_digits((string) ($data['hours'] ?? 0)));
+
+            // ⚠️ جلوگیری از مرخصی هم‌پوشان: در غیر این صورت روزها دوبار شمرده
+            // می‌شوند و گزارش حضور و غیاب اشتباه می‌شود.
+            $overlap = Database::fetchOne(
+                'SELECT id, start_date, end_date, status FROM leave_requests
+                 WHERE user_id = ? AND status IN (\'pending\', \'approved\')
+                   AND start_date <= ? AND end_date >= ?
+                 ORDER BY start_date ASC LIMIT 1',
+                [$uid, $end, $start]
+            );
+            if ($overlap) {
+                json_error(
+                    'برای «' . Jalali::toHuman((string) $overlap['start_date'], true, true) .
+                    '» تا «' . Jalali::toHuman((string) $overlap['end_date'], true, true) .
+                    '» درخواست مرخصی ' . ($overlap['status'] === 'approved' ? 'تأییدشده' : 'در انتظار تأیید') .
+                    ' دارید. بازه‌های هم‌پوشان مجاز نیست.'
+                );
+            }
             $id = Database::insert(
                 'INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, hours, reason, status, created_at) VALUES (?, ?, ?, ?, ?, ?, \'pending\', ?)',
                 [$uid, $type, $start, $end, $hours, $reason, now_datetime()]
