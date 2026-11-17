@@ -114,23 +114,58 @@ if ($type === 'employees') {
 }
 
 if ($type === 'attendance') {
-    $month = (string) ($_GET['month'] ?? '');
     $where = '';
     $params = [];
-    if (!Auth::isManager()) {
-        $where = 'WHERE a.user_id = ?';
-        $params[] = $user['id'];
+    $isManager = Auth::isManager();
+
+    // انتخاب کارمند: مدیر می‌تواند هر کسی را ببیند، کارمند فقط سوابق خودش
+    $targetUser = $isManager && !empty($_GET['user_id']) ? (int) $_GET['user_id'] : (int) $user['id'];
+    if ($isManager && $targetUser === (int) $user['id'] && empty($_GET['user_id'])) {
+        // مدیر بدون انتخاب کارمند → همه کارمندان
+        $filterUser = false;
+    } else {
+        $filterUser = true;
     }
-    if ($month !== '') {
-        $greg = Jalali::parseToGregorian($month . '/01');
-        if ($greg) {
-            [$gy, $gm] = array_map('intval', explode('-', $greg));
-            $where .= ($where === '' ? 'WHERE ' : ' AND ') . "DATE_FORMAT(a.work_date, '%Y-%m') = ?";
-            // سازگاری با SQLite: استفاده از strftime در صورت نیاز
-            if (Database::isSqlite()) {
-                $where = str_replace("DATE_FORMAT(a.work_date, '%Y-%m') = ?", "strftime('%Y-%m', a.work_date) = ?", $where);
+    if ($filterUser) {
+        $where = 'WHERE a.user_id = ?';
+        $params[] = $targetUser;
+        // عنوان و نام فایل با نام کارمند
+        $targetName = (string) Database::fetchValue('SELECT full_name FROM users WHERE id = ?', [$targetUser], '');
+        if ($targetName !== '') {
+            $reportTitle = 'گزارش حضور و غیاب ' . $targetName;
+            $fileStem = 'attendance_' . $targetUser . '_';
+        }
+    }
+    if (empty($fileStem)) {
+        $fileStem = 'attendance_';
+    }
+    if (empty($reportTitle)) {
+        $reportTitle = 'گزارش حضور و غیاب';
+    }
+
+    // فیلتر ماه: هم به شکل jy/jm (فرم) و هم month=1405/08 پذیرفته می‌شود
+    $jy = (int) ($_GET['jy'] ?? 0);
+    $jm = (int) ($_GET['jm'] ?? 0);
+    if ($jy > 0 && $jm > 0) {
+        $first = Jalali::jalaliToGregorianString($jy, $jm, 1);
+        $last = Jalali::jalaliToGregorianString($jy, $jm, Jalali::daysInMonth($jy, $jm));
+        $where .= ($where === '' ? 'WHERE ' : ' AND ') . 'a.work_date BETWEEN ? AND ?';
+        $params[] = $first;
+        $params[] = $last;
+        $reportTitle .= ' — ' . Jalali::monthName($jm) . ' ' . fa_digits($jy);
+    } else {
+        $month = (string) ($_GET['month'] ?? '');
+        if ($month !== '') {
+            $greg = Jalali::parseToGregorian($month . '/01');
+            if ($greg) {
+                [$gy, $gm] = array_map('intval', explode('-', $greg));
+                if (Database::isSqlite()) {
+                    $where .= ($where === '' ? 'WHERE ' : ' AND ') . "strftime('%Y-%m', a.work_date) = ?";
+                } else {
+                    $where .= ($where === '' ? 'WHERE ' : ' AND ') . "DATE_FORMAT(a.work_date, '%Y-%m') = ?";
+                }
+                $params[] = sprintf('%04d-%02d', $gy, $gm);
             }
-            $params[] = sprintf('%04d-%02d', $gy, $gm);
         }
     }
     $rowsDb = Database::fetchAll(
@@ -147,8 +182,8 @@ if ($type === 'attendance') {
             format_minutes_fa((int) $r['total_minutes']), work_mode_label((string) $r['work_mode']), $r['note'] ?? '',
         ];
     }
-    if ($format === 'print') export_print_page('گزارش حضور و غیاب', 'ثبت‌های حضور روزانه', $headers, $rows, $companyName, $todayHuman);
-    export_csv_download('attendance_' . $stamp . '.csv', $headers, $rows);
+    if ($format === 'print') export_print_page($reportTitle, 'ثبت‌های حضور روزانه', $headers, $rows, $companyName, $todayHuman);
+    export_csv_download($fileStem . $stamp . '.csv', $headers, $rows);
 }
 
 if ($type === 'leaves') {

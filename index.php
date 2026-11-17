@@ -18,6 +18,12 @@ $todayJalali = Jalali::toDateString(today_date(), true);
 $nowTime     = fa_digits(date('H:i'));
 $unread      = (int) Database::fetchValue('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0', [$uid], 0);
 $assignables = Auth::assignableUsers();
+// برای «نمایش ماه» حضور: مدیر باید سابقه همه کارمندان (حتی غیرفعال‌ها) را ببیند
+$attendanceUsers = ($isManager)
+    ? Database::fetchAll(
+        'SELECT id, full_name, is_active, role FROM users ORDER BY is_active DESC, full_name ASC'
+    )
+    : [];
 $projectsAll = Database::fetchAll("SELECT id, name, code, color FROM projects WHERE status = 'active' ORDER BY id ASC");
 $departments = Database::fetchAll('SELECT id, name FROM departments ORDER BY id ASC');
 $csrf        = csrf_token();
@@ -298,7 +304,7 @@ $theme       = 'light';
               <label class="field"><span>سال</span><input type="number" id="attYear" min="1390" max="1420"></label>
             </div>
             <?php if ($isManager): ?>
-            <label class="field"><span>کارمند</span><select id="attUser"><option value="">خودم</option><?php foreach ($assignables as $a): ?><option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?></option><?php endforeach; ?></select></label>
+            <label class="field"><span>کارمند</span><select id="attUser"><option value="">— همه کارمندان / خودم —</option><?php foreach ($attendanceUsers as $a): ?><option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?><?= ((int) $a['is_active'] === 0 ? ' (غیرفعال)' : '') ?><?= ($a['role'] === 'admin' ? ' — مدیر' : '') ?></option><?php endforeach; ?></select></label>
             <?php endif; ?>
             <button class="btn btn-sm btn-block" id="btnAttLoad">نمایش سوابق</button>
             <?php if ($isManager): ?>
@@ -318,7 +324,7 @@ $theme       = 'light';
           <h3>📅 سوابق حضور ماهانه</h3>
           <div class="table-wrap" style="border:0">
             <table class="tbl">
-              <thead><tr><th>تاریخ شمسی</th><th>روز</th><th>ورود</th><th>خروج</th><th>مجموع</th><th>نوع کار</th></tr></thead>
+              <thead><tr><?php if ($isManager): ?><th>کارمند</th><?php endif; ?><th>تاریخ شمسی</th><th>روز</th><th>ورود</th><th>خروج</th><th>مجموع</th><th>نوع کار</th></tr></thead>
               <tbody id="attendanceBody"><tr><td colspan="6" class="center muted">برای مشاهده، دکمه «نمایش سوابق» را بزنید.</td></tr></tbody>
             </table>
           </div>

@@ -271,28 +271,30 @@ try {
         case 'dashboard_stats': {
             $today = today_date();
             $weekAgo = date('Y-m-d', strtotime('-7 days'));
+            // نکته: شرط دسترسی با پیشوند نام جدول (t.) نوشته می‌شود تا در کوئری‌های JOIN
+            // که جدول users هم ستون created_by دارد، خطای «ambiguous column name» رخ ندهد.
             if ($isManager) {
                 $base = '1=1'; $params = [];
             } else {
-                $base = '(assigned_to = ? OR created_by = ?)'; $params = [$uid, $uid];
+                $base = '(t.assigned_to = ? OR t.created_by = ?)'; $params = [$uid, $uid];
             }
             $counts = Database::fetchAll(
-                "SELECT status, COUNT(*) AS c FROM tasks WHERE {$base} AND is_archived = 0 GROUP BY status",
+                "SELECT t.status, COUNT(*) AS c FROM tasks t WHERE {$base} AND t.is_archived = 0 GROUP BY t.status",
                 $params
             );
             $byStatus = ['todo' => 0, 'in_progress' => 0, 'review' => 0, 'done' => 0];
             foreach ($counts as $r) $byStatus[(string) $r['status']] = (int) $r['c'];
             $total = array_sum($byStatus);
             $overdue = (int) Database::fetchValue(
-                "SELECT COUNT(*) FROM tasks WHERE {$base} AND is_archived = 0 AND status != 'done' AND due_date IS NOT NULL AND due_date < ?",
+                "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < ?",
                 array_merge($params, [$today]), 0
             );
             $dueToday = (int) Database::fetchValue(
-                "SELECT COUNT(*) FROM tasks WHERE {$base} AND is_archived = 0 AND status != 'done' AND due_date = ?",
+                "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status != 'done' AND t.due_date = ?",
                 array_merge($params, [$today]), 0
             );
             $doneWeek = (int) Database::fetchValue(
-                "SELECT COUNT(*) FROM tasks WHERE {$base} AND is_archived = 0 AND status = 'done' AND DATE(completed_at) >= ?",
+                "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status = 'done' AND DATE(t.completed_at) >= ?",
                 array_merge($params, [$weekAgo]), 0
             );
             $myTasks = Database::fetchAll(
@@ -308,18 +310,18 @@ try {
             for ($i = 6; $i >= 0; $i--) {
                 $d = date('Y-m-d', strtotime("-{$i} days"));
                 $created = (int) Database::fetchValue(
-                    "SELECT COUNT(*) FROM tasks WHERE {$base} AND DATE(created_at) = ?",
+                    "SELECT COUNT(*) FROM tasks t WHERE {$base} AND DATE(t.created_at) = ?",
                     array_merge($params, [$d]), 0
                 );
                 $completed = (int) Database::fetchValue(
-                    "SELECT COUNT(*) FROM tasks WHERE {$base} AND status='done' AND DATE(completed_at) = ?",
+                    "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.status='done' AND DATE(t.completed_at) = ?",
                     array_merge($params, [$d]), 0
                 );
                 $chart[] = ['date' => $d, 'label' => Jalali::toHuman($d, false, false), 'created' => $created, 'completed' => $completed];
             }
             // توزیع اولویت
             $prioRows = Database::fetchAll(
-                "SELECT priority, COUNT(*) AS c FROM tasks WHERE {$base} AND is_archived = 0 AND status != 'done' GROUP BY priority",
+                "SELECT t.priority, COUNT(*) AS c FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status != 'done' GROUP BY t.priority",
                 $params
             );
             $byPriority = ['urgent' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
@@ -1031,11 +1033,22 @@ try {
             }
             $first = Jalali::jalaliToGregorianString($jy, $jm, 1);
             $last = Jalali::jalaliToGregorianString($jy, $jm, Jalali::daysInMonth($jy, $jm));
+            $allUsers = $isManager && !empty($data['all_users']);
             $targetUser = $isManager && !empty($data['user_id']) ? (int) $data['user_id'] : $uid;
-            $rows = Database::fetchAll(
-                'SELECT * FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ? ORDER BY work_date ASC',
-                [$targetUser, $first, $last]
-            );
+            if ($allUsers) {
+                // نمای کلی مدیر: حضور همه کارمندان در این ماه
+                $rows = Database::fetchAll(
+                    'SELECT a.*, u.full_name AS user_name, u.employee_code
+                     FROM attendance a JOIN users u ON u.id = a.user_id
+                     WHERE a.work_date BETWEEN ? AND ? ORDER BY a.work_date DESC, u.full_name ASC',
+                    [$first, $last]
+                );
+            } else {
+                $rows = Database::fetchAll(
+                    'SELECT * FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ? ORDER BY work_date ASC',
+                    [$targetUser, $first, $last]
+                );
+            }
             $totalMin = 0;
             foreach ($rows as &$r) {
                 $totalMin += (int) $r['total_minutes'];
@@ -1046,14 +1059,110 @@ try {
                 $r['check_out_fa'] = $r['check_out'] ? fa_digits(substr((string) $r['check_out'], 11, 5)) : '—';
                 $r['total_fa'] = format_minutes_fa((int) $r['total_minutes']);
                 $r['work_mode_label'] = work_mode_label((string) $r['work_mode']);
+                if (!isset($r['user_name'])) $r['user_name'] = '';
             }
             unset($r);
             json_success([
                 'rows' => $rows,
+                'all_users' => $allUsers,
                 'month_title' => Jalali::monthName($jm) . ' ' . fa_digits($jy),
                 'total_minutes' => $totalMin,
                 'total_fa' => format_minutes_fa($totalMin),
                 'days_present' => count($rows),
+            ]);
+            break;
+        }
+
+        case 'attendance_user': {
+            // سابقه حضور یک کارمند مشخص (برای مدیر شرکت و سرپرست واحد)
+            require_manager();
+            $targetId = (int) ($data['user_id'] ?? 0);
+            if ($targetId <= 0) json_error('کارمند را انتخاب کنید.');
+            $target = Database::fetchOne(
+                'SELECT u.id, u.full_name, u.employee_code, u.role, u.position_title, u.is_active, u.avatar_color, d.name AS department_name
+                 FROM users u LEFT JOIN departments d ON d.id = u.department_id WHERE u.id = ? LIMIT 1',
+                [$targetId]
+            );
+            if (!$target) json_error('کارمند یافت نشد.', 404);
+            // سرپرست واحد فقط کارمندان واحد خودش را می‌بیند
+            if (!$isAdmin && $isManager) {
+                $deptId = Database::fetchValue('SELECT department_id FROM users WHERE id = ?', [$uid]);
+                if ($deptId !== null && (int) $deptId !== 0) {
+                    $targetDept = Database::fetchValue('SELECT department_id FROM users WHERE id = ?', [$targetId]);
+                    if ($targetDept === null || (int) $targetDept !== (int) $deptId) {
+                        json_error('شما فقط به سوابق کارمندان واحد خود دسترسی دارید.', 403);
+                    }
+                }
+            }
+            $jy = (int) ($data['jy'] ?? 0);
+            $jm = (int) ($data['jm'] ?? 0);
+            if ($jy <= 0 || $jm < 1 || $jm > 12) {
+                [$jy, $jm] = Jalali::todayArray();
+            }
+            $first = Jalali::jalaliToGregorianString($jy, $jm, 1);
+            $last = Jalali::jalaliToGregorianString($jy, $jm, Jalali::daysInMonth($jy, $jm));
+            $rows = Database::fetchAll(
+                'SELECT * FROM attendance WHERE user_id = ? AND work_date BETWEEN ? AND ? ORDER BY work_date ASC',
+                [$targetId, $first, $last]
+            );
+            $totalMin = 0;
+            foreach ($rows as &$r) {
+                $totalMin += (int) $r['total_minutes'];
+                $r['id'] = (int) $r['id'];
+                $r['work_date_jalali'] = Jalali::toDateString($r['work_date'], true);
+                $r['work_date_human'] = Jalali::toHuman($r['work_date'], true, true);
+                $r['check_in_fa'] = $r['check_in'] ? fa_digits(substr((string) $r['check_in'], 11, 5)) : '—';
+                $r['check_out_fa'] = $r['check_out'] ? fa_digits(substr((string) $r['check_out'], 11, 5)) : '—';
+                $r['total_fa'] = format_minutes_fa((int) $r['total_minutes']);
+                $r['work_mode_label'] = work_mode_label((string) $r['work_mode']);
+                $r['is_open'] = empty($r['check_out']);
+            }
+            unset($r);
+            // آمار کل سال/ماه + حقوق و مرخصی‌ها
+            $leaves = Database::fetchAll(
+                "SELECT leave_type, status, start_date, end_date, hours, reason FROM leave_requests
+                 WHERE user_id = ? AND (start_date <= ? AND end_date >= ?) ORDER BY start_date DESC",
+                [$targetId, $last, $first]
+            );
+            foreach ($leaves as &$lv) {
+                $lv['start_jalali'] = Jalali::toDateString($lv['start_date'], true);
+                $lv['end_jalali'] = Jalali::toDateString($lv['end_date'], true);
+                $lv['type_label'] = leave_type_label((string) $lv['leave_type']);
+                $lv['status_label'] = leave_status_label((string) $lv['status']);
+            }
+            unset($lv);
+            $taskStats = Database::fetchOne(
+                "SELECT COUNT(*) AS total,
+                        SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done,
+                        SUM(CASE WHEN status != 'done' AND is_archived = 0 THEN 1 ELSE 0 END) AS open
+                 FROM tasks WHERE assigned_to = ?",
+                [$targetId]
+            ) ?: [];
+            json_success([
+                'user' => [
+                    'id' => (int) $target['id'],
+                    'full_name' => $target['full_name'],
+                    'employee_code' => $target['employee_code'],
+                    'role_label' => user_role_label((string) $target['role']),
+                    'position_title' => $target['position_title'],
+                    'department_name' => $target['department_name'],
+                    'is_active' => (bool) $target['is_active'],
+                    'avatar_color' => $target['avatar_color'],
+                ],
+                'rows' => $rows,
+                'month_title' => Jalali::monthName($jm) . ' ' . fa_digits($jy),
+                'jy' => $jy, 'jm' => $jm,
+                'total_minutes' => $totalMin,
+                'total_fa' => format_minutes_fa($totalMin),
+                'avg_fa' => count($rows) > 0 ? format_minutes_fa((int) round($totalMin / count($rows))) : '—',
+                'days_present' => count($rows),
+                'open_days' => count(array_filter($rows, static fn(array $r): bool => !empty($r['is_open']))),
+                'leaves' => $leaves,
+                'tasks' => [
+                    'total' => (int) ($taskStats['total'] ?? 0),
+                    'done' => (int) ($taskStats['done'] ?? 0),
+                    'open' => (int) ($taskStats['open'] ?? 0),
+                ],
             ]);
             break;
         }

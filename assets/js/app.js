@@ -50,7 +50,7 @@
     me: 1, bootstrap: 1, dashboard_stats: 1, tasks_list: 1, task_get: 1, users_list: 1,
     departments_list: 1, projects_list: 1, attendance_today: 1, attendance_list: 1,
     attendance_team: 1, leaves_list: 1, announcements_list: 1, notifications_list: 1,
-    activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1, ai_status: 1
+    activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1, ai_status: 1, attendance_user: 1
   };
 
   /** درخواست به API — پشتیبانی از JSON و FormData */
@@ -975,6 +975,7 @@
         '<td class="small">' + esc(u.last_login_human) + '</td>' +
         '<td><div class="row-actions">' +
         '<button class="btn btn-sm" data-emp-edit="' + u.id + '">✏️</button>' +
+        '<button class="btn btn-sm" data-emp-att="' + u.id + '" title="سابقه حضور و غیاب">🗓️ سابقه</button>' +
         '<button class="btn btn-sm" data-emp-task="' + u.id + '">➕ تسک</button>' +
         (APP.user.is_admin ? '<button class="btn btn-sm btn-danger" data-emp-del="' + u.id + '">🗑️</button>' : '') +
         '</div></td></tr>';
@@ -983,6 +984,11 @@
       b.addEventListener('click', function () {
         var id = Number(this.getAttribute('data-emp-edit'));
         employeeModal(state.users.filter(function (u) { return u.id === id; })[0]);
+      });
+    });
+    $$('[data-emp-att]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        employeeAttendanceModal(Number(this.getAttribute('data-emp-att')));
       });
     });
     $$('[data-emp-task]').forEach(function (b) {
@@ -1129,16 +1135,28 @@
     body.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div></div></td></tr>';
     var q = { jy: Number($('#attYear').value), jm: Number($('#attMonth').value) };
     var u = $('#attUser');
-    if (u && u.value) q.user_id = u.value;
+    if (u && u.value) {
+      q.user_id = u.value;
+    } else if (u && APP.user.is_manager) {
+      // مدیر بدون انتخاب کارمند: خلاصه حضور امروز تیم را نشان بده
+      q.all_users = 1;
+    }
     api('attendance_list', q).then(function (res) {
       $('#attDaysPresent').textContent = FAT(res.days_present);
       $('#attMonthTotal').textContent = res.total_fa;
+      var allUsers = !!res.all_users;
+      var head = document.querySelector('#section-attendance thead tr');
+      if (head) {
+        head.innerHTML = (allUsers ? '<th>کارمند</th>' : '') +
+          '<th>تاریخ</th><th>روز</th><th>ورود</th><th>خروج</th><th>کارکرد</th><th>نوع</th>';
+      }
       if (!res.rows.length) {
-        body.innerHTML = '<tr><td colspan="6" class="center muted">سابقه‌ای برای این ماه ثبت نشده است.</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" class="center muted">سابقه‌ای برای این ماه ثبت نشده است.</td></tr>';
         return;
       }
       body.innerHTML = res.rows.map(function (r) {
-        return '<tr><td>' + esc(r.work_date_jalali) + '</td><td class="small">' + esc(r.work_date_human.split(' ')[0]) + '</td>' +
+        return '<tr>' + (allUsers ? '<td style="font-weight:700">' + esc(r.user_name || '—') + '</td>' : '') +
+          '<td>' + esc(r.work_date_jalali) + '</td><td class="small">' + esc(String(r.work_date_human || '').split(' ')[0]) + '</td>' +
           '<td>' + esc(r.check_in_fa) + '</td><td>' + esc(r.check_out_fa) + '</td><td>' + esc(r.total_fa) + '</td><td class="small">' + esc(r.work_mode_label) + '</td></tr>';
       }).join('');
     }).catch(function (err) {
@@ -1355,6 +1373,133 @@
           '<td class="small">' + esc(l.description) + '</td><td class="small">' + esc(l.created_human) + '<div class="muted">' + esc(l.created_ago) + '</div></td></tr>';
       }).join('');
     }).catch(function (err) { $('#activityBody').innerHTML = '<tr><td colspan="4" class="center muted">' + esc(err.message) + '</td></tr>'; });
+  }
+
+  /**
+   * سابقه حضور و غیاب یک کارمند — مخصوص مدیر شرکت و سرپرست واحد
+   * دسترسی: مدیر همه کارمندان (حتی غیرفعال‌ها)، سرپرست فقط کارمندان واحد خودش
+   */
+  function employeeAttendanceModal(userId) {
+    var t = J.todayJalali();
+    var jy = t[0], jm = t[1];
+    var curId = userId;
+
+    function monthOptions(sel) {
+      return J.MONTH_NAMES.map(function (m, i) {
+        return '<option value="' + (i + 1) + '"' + (i + 1 === sel ? ' selected' : '') + '>' + m + '</option>';
+      }).join('');
+    }
+
+    openGeneric('🗓️ سابقه حضور و غیاب', '<div class="loading"><div class="spinner"></div>در حال بارگذاری سابقه...</div>');
+
+    function render(data) {
+      var u = data.user || {};
+      var rows = data.rows || [];
+      var leaves = data.leaves || [];
+      var tasks = data.tasks || {};
+      var body = '';
+
+      body += '<div class="card" style="box-shadow:none;border:1px solid var(--border);margin-bottom:12px">' +
+        '<div style="display:flex;gap:12px;align-items:center">' +
+        avatar(u.full_name, u.avatar_color, '') +
+        '<div class="grow"><div style="font-weight:800;font-size:15px">' + esc(u.full_name) + '</div>' +
+        '<div class="small muted">' + esc(u.position_title || '—') + ' • ' + esc(u.department_name || 'بدون واحد') +
+        ' • ' + esc(u.role_label || '') + ' • کد ' + esc(u.employee_code || '—') + '</div></div>' +
+        (u.is_active ? '<span class="badge badge-active">فعال</span>' : '<span class="badge badge-archived">غیرفعال</span>') +
+        '</div></div>';
+
+      // انتخاب ماه و سال
+      body += '<div class="form-row">' +
+        '<label class="field"><span>ماه</span><select id="eaMonth">' + monthOptions(data.jm) + '</select></label>' +
+        '<label class="field"><span>سال</span><input type="number" id="eaYear" min="1390" max="1420" value="' + (data.jy || jy) + '"></label>' +
+        '</div>';
+
+      // کارت‌های خلاصه
+      body += '<div class="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">' +
+        '<div class="card" style="box-shadow:none;border:1px solid var(--border);text-align:center;padding:10px"><div class="small muted">روزهای حاضر</div><div style="font-size:20px;font-weight:800">' + FAT(data.days_present || 0) + '</div></div>' +
+        '<div class="card" style="box-shadow:none;border:1px solid var(--border);text-align:center;padding:10px"><div class="small muted">جمع کارکرد</div><div style="font-size:15px;font-weight:800">' + esc(data.total_fa || '—') + '</div></div>' +
+        '<div class="card" style="box-shadow:none;border:1px solid var(--border);text-align:center;padding:10px"><div class="small muted">میانگین روزانه</div><div style="font-size:15px;font-weight:800">' + esc(data.avg_fa || '—') + '</div></div>' +
+        '<div class="card" style="box-shadow:none;border:1px solid var(--border);text-align:center;padding:10px"><div class="small muted">بدون ثبت خروج</div><div style="font-size:20px;font-weight:800">' + FAT(data.open_days || 0) + '</div></div>' +
+        '<div class="card" style="box-shadow:none;border:1px solid var(--border);text-align:center;padding:10px"><div class="small muted">تسک‌های باز</div><div style="font-size:20px;font-weight:800">' + FAT(tasks.open || 0) + '</div></div>' +
+        '</div>';
+
+      // جدول سوابق روزانه
+      body += '<h4 style="font-size:13px;margin:8px 0">📋 سوابق ' + esc(data.month_title || '') + '</h4>';
+      if (!rows.length) {
+        body += emptyState('🗓️', 'در این ماه سابقه‌ای ثبت نشده است.');
+      } else {
+        body += '<div class="table-wrap"><table class="table"><thead><tr>' +
+          '<th>تاریخ</th><th>روز</th><th>ورود</th><th>خروج</th><th>کارکرد</th><th>نوع</th><th>یادداشت</th></tr></thead><tbody>' +
+          rows.map(function (r) {
+            var open = !r.check_out;
+            return '<tr>' +
+              '<td>' + esc(r.work_date_jalali) + '</td>' +
+              '<td class="small">' + esc(String(r.work_date_human || '').split(' ')[0] || '—') + '</td>' +
+              '<td>' + esc(r.check_in_fa) + '</td>' +
+              '<td>' + (open ? '<span class="badge badge-urgent">ثبت نشده</span>' : esc(r.check_out_fa)) + '</td>' +
+              '<td>' + esc(r.total_fa) + '</td>' +
+              '<td class="small">' + esc(r.work_mode_label) + '</td>' +
+              '<td class="small muted">' + esc(r.note || '—') + '</td>' +
+              '</tr>';
+          }).join('') + '</tbody></table></div>';
+      }
+
+      // مرخصی‌ها
+      if (leaves.length) {
+        body += '<h4 style="font-size:13px;margin:14px 0 6px">🌴 مرخصی‌ها و مأموریت‌های این ماه (' + FAT(leaves.length) + ')</h4>';
+        body += leaves.map(function (l) {
+          var badge = l.status === 'approved' ? 'badge-done' : l.status === 'rejected' ? 'badge-urgent' : 'badge-review';
+          return '<div class="db-table-row"><span>🌴</span><span class="grow">' + esc(l.type_label) +
+            ' — از ' + esc(l.start_jalali) + ' تا ' + esc(l.end_jalali) +
+            (l.reason ? ' <span class="small muted">(' + esc(l.reason) + ')</span>' : '') +
+            '</span><span class="badge ' + badge + '">' + esc(l.status_label) + '</span></div>';
+        }).join('');
+      }
+
+      body += '<div class="toolbar" style="margin-top:14px">' +
+        '<button class="btn" id="eaClose">بستن</button>' +
+        '<button class="btn btn-primary" id="eaExport">📥 خروجی اکسل این ماه</button>' +
+        (APP.user.is_manager ? '<button class="btn" id="eaManual">📝 ثبت دستی برای این کارمند</button>' : '') +
+        '</div>';
+
+      $('#genericBody').innerHTML = body;
+      $('#eaClose').addEventListener('click', closeGeneric);
+      $('#eaExport').addEventListener('click', function () {
+        location.href = 'export.php?type=attendance&format=csv&jy=' + $('#eaYear').value + '&jm=' + $('#eaMonth').value + '&user_id=' + curId;
+      });
+      var manual = $('#eaManual');
+      if (manual) manual.addEventListener('click', function () {
+        closeGeneric();
+        go('attendance');
+        setTimeout(function () {
+          var sel = $('#attUser');
+          if (sel) { sel.value = String(curId); sel.dispatchEvent(new Event('change')); }
+          var b = $('#btnAttManual');
+          if (b) b.click();
+          setTimeout(function () {
+            var am = $('#amUser');
+            if (am) am.value = String(curId);
+          }, 350);
+        }, 250);
+      });
+      $('#eaMonth').addEventListener('change', reload);
+      $('#eaYear').addEventListener('change', reload);
+    }
+
+    function reload() {
+      var m = $('#eaMonth') ? Number($('#eaMonth').value) : jm;
+      var y = $('#eaYear') ? Number($('#eaYear').value) : jy;
+      if ($('#genericBody')) $('#genericBody').innerHTML = '<div class="loading"><div class="spinner"></div>در حال بارگذاری...</div>';
+      api('attendance_user', { user_id: curId, jy: y, jm: m })
+        .then(function (res) { render(res); })
+        .catch(function (err) {
+          $('#genericBody').innerHTML = '<div class="alert alert-error">' + esc(err.message) + '</div>' +
+            '<button class="btn" id="eaClose2">بستن</button>';
+          var c = $('#eaClose2'); if (c) c.addEventListener('click', closeGeneric);
+        });
+    }
+
+    reload();
   }
 
   /* ================= پروفایل ================= */
