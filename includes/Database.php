@@ -26,9 +26,21 @@ final class Database
             if (!in_array('mysql', $available, true)) {
                 throw new RuntimeException('افزونه pdo_mysql در PHP فعال نیست. لطفاً آن را در php.ini فعال کنید.');
             }
-            self::$pdo = self::connectMysql();
-            self::$activeDriver = 'mysql';
-            return self::$pdo;
+            try {
+                self::$pdo = self::connectMysql();
+                self::$activeDriver = 'mysql';
+                return self::$pdo;
+            } catch (Throwable $e) {
+                self::$mysqlFallbackReason = $e->getMessage();
+                // در هاست اشتراکی اگر دیتابیس هنوز ساخته نشده و مجوز ساخت هم نباشد،
+                // برای اینکه سایت از کار نیفتد به SQLite سوئیچ می‌کنیم (بعداً می‌توان اتصال را اصلاح کرد).
+                if (in_array('sqlite', $available, true)) {
+                    self::$pdo = self::connectSqlite();
+                    self::$activeDriver = 'sqlite';
+                    return self::$pdo;
+                }
+                throw $e;
+            }
         }
 
         if ($mode === 'sqlite') {
@@ -92,6 +104,7 @@ final class Database
             $msg = $e->getMessage();
             $code = (int) ($e->errorInfo[1] ?? 0);
             if ($code === 1049 || stripos($msg, 'Unknown database') !== false) {
+                // دیتابیس وجود ندارد؛ در صورت داشتن مجوز، خودکار با کدگذاری فارسی ساخته می‌شود
                 $dsnServer = "mysql:host={$host};port={$port};charset={$charset}";
                 $serverPdo = new PDO($dsnServer, DB_USER, DB_PASS, $options);
                 $serverPdo->exec(
@@ -99,6 +112,14 @@ final class Database
                 );
                 $serverPdo = null;
                 $pdo = new PDO($dsnWithDb, DB_USER, DB_PASS, $options);
+            } elseif ($code === 1044 || $code === 1045 || stripos($msg, 'Access denied') !== false) {
+                // در هاست اشتراکی معمولاً دیتابیس و کاربر از پیش ساخته شده‌اند و نام دیتابیس
+                // با پیشوند کاربر یکسان نیست؛ در این حالت خطای فارسی قابل‌فهم تولید می‌کنیم.
+                throw new RuntimeException(
+                    'دسترسی به پایگاه داده MySQL برقرار نشد. در هاست اشتراکی نام دیتابیس و کاربر باید دقیقاً همان مقادیری باشند که میزبان داده است ' .
+                    '(مقدار فعلی: DB_NAME=' . DB_NAME . ' و DB_USER=' . DB_USER . '). ابتدا دیتابیس را در cPanel/DirectAdmin بسازید و سپس نام دقیق آن را در فایل .env قرار دهید. ' .
+                    'جزئیات: ' . $msg
+                );
             } else {
                 throw $e;
             }

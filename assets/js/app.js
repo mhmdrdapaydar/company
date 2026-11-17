@@ -1393,6 +1393,7 @@
         '<dt>موتور SQL</dt><dd>' + esc(db.engine_label || '—') + '</dd>' +
         '<dt>نسخه سرور دیتابیس</dt><dd dir="ltr">' + esc(db.version || '—') + '</dd>' +
         '<dt>هاست MySQL</dt><dd dir="ltr">' + esc(db.mysql_host || '—') + '</dd>' +
+        '<dt>نام دیتابیس MySQL</dt><dd dir="ltr">' + esc(db.mysql_db || '—') + '</dd>' +
         '<dt>مجموعه نویسه</dt><dd><code>' + esc(db.charset || 'utf8mb4') + '</code> / <code>' + esc(db.collation || 'utf8mb4_persian_ci') + '</code></dd>' +
         '<dt>پشتیبانی فارسی</dt><dd>' + (db.persian_ready ? '<span class="badge badge-done">کامل ✅</span>' : '—') + '</dd>' +
         '<dt>ساخت خودکار جداول</dt><dd>' + (db.auto_schema ? '<span class="badge badge-done">فعال</span>' : '—') + '</dd>' +
@@ -1401,6 +1402,10 @@
         '<dt>امروز</dt><dd>' + esc(db.today_jalali) + '</dd>' +
         (db.fallback_reason ? '<dt>علت جایگزینی</dt><dd class="small">' + esc(db.fallback_reason) + '</dd>' : '') +
         '</dl>' +
+        '<div class="small muted" style="margin-top:10px;line-height:1.9">' +
+        '🔁 برای انتقال داده‌های همین پایگاه داده به MySQL، ' +
+        '<a class="link" href="migrate.php">ابزار انتقال داده</a> را اجرا کنید.' +
+        '</div>' +
         '<h4 style="font-size:13px;margin:14px 0 8px">🗂️ جداول (' + FAT(tables.length) + ')</h4>' +
         tables.map(function (t) {
           var name = typeof t === 'string' ? t : (t.name || t.table || t.TABLE_NAME || '');

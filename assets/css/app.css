@@ -19,6 +19,7 @@ html{scroll-behavior:smooth}
 body{margin:0;font-family:Vazirmatn,"Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.8;font-size:14px}
 a{color:var(--primary);text-decoration:none}
 a:hover{text-decoration:underline}
+a.link{border-bottom:1px dashed currentColor}
 button{font-family:inherit;cursor:pointer}
 input,select,textarea{font-family:inherit;font-size:14px}
 h1,h2,h3,h4{margin:0;line-height:1.5}

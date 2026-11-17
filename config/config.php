@@ -9,22 +9,35 @@ declare(strict_types=1);
  * سیستم به صورت کاملاً خودکار دیتابیس و تمام جداول را با کدگذاری فارسی utf8mb4_persian_ci می‌سازد.
  */
 
-// بارگذاری فایل .env در صورت وجود
+/**
+ * بارگذاری فایل .env با پشتیبانی کامل از رمزهای عبور خاص (# ، فاصله، = ، " و ')
+ * قاعده: هر چیزی بعد از اولین «=» مقدار است؛ کاراکتر # فقط در ابتدای خط کامنت محسوب می‌شود.
+ * برای مقادیر دارای فاصله یا کاراکترهای خاص، مقدار را داخل "..." یا '...' قرار دهید.
+ */
 $envFile = dirname(__DIR__) . '/.env';
 if (is_file($envFile) && is_readable($envFile)) {
-    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+    $lines = file($envFile, FILE_IGNORE_NEW_LINES) ?: [];
     foreach ($lines as $line) {
-        $trimmed = trim($line);
-        if ($trimmed === '' || str_starts_with($trimmed, '#') || !str_contains($trimmed, '=')) {
+        $line = ltrim($line, " \t\xEF\xBB\xBF"); // حذف BOM و فاصله ابتدای خط
+        if ($line === '' || $line[0] === '#' || $line[0] === ';' || !str_contains($line, '=')) {
             continue;
         }
-        [$k, $v] = explode('=', $trimmed, 2);
+        [$k, $v] = explode('=', $line, 2);
         $k = trim($k);
-        $v = trim($v);
-        if ((str_starts_with($v, '"') && str_ends_with($v, '"')) || (str_starts_with($v, "'") && str_ends_with($v, "'"))) {
-            $v = substr($v, 1, -1);
+        if (str_starts_with($k, 'export ')) {
+            $k = trim(substr($k, 7));
         }
-        if ($k !== '' && getenv($k) === false) {
+        $v = trim($v);
+        $len = strlen($v);
+        if ($len >= 2 && (($v[0] === '"' && $v[$len - 1] === '"') || ($v[0] === "'" && $v[$len - 1] === "'"))) {
+            // مقدار داخل کوتیشن: عیناً همان مقدار (بدون حذف کاراکترهای داخلی)
+            $v = substr($v, 1, -1);
+        } else {
+            // مقدار بدون کوتیشن: تنها کامنت انتهایی با فاصله و # حذف می‌شود
+            $v = preg_replace('/\s+#.*$/', '', $v) ?? $v;
+            $v = rtrim($v);
+        }
+        if ($k !== '' && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $k) && getenv($k) === false) {
             putenv("{$k}={$v}");
             $_ENV[$k] = $v;
         }
@@ -45,6 +58,21 @@ if (!function_exists('app_env')) {
             return $default;
         }
         return $val;
+    }
+}
+
+/**
+ * مقدار خام متغیر محیطی (بدون جایگزینی مقدار خالی)
+ * برای رمز عبور استفاده می‌شود تا رمزهای حاوی «0» یا فاصله نیز معتبر بمانند.
+ */
+if (!function_exists('app_env_raw')) {
+    function app_env_raw(string $key, string $default = ''): string
+    {
+        $val = $_ENV[$key] ?? getenv($key);
+        if ($val === false || $val === null) {
+            return $default;
+        }
+        return (string) $val;
     }
 }
 
@@ -74,7 +102,7 @@ defined('DB_HOST')      || define('DB_HOST', (string) app_env('DB_HOST', '127.0.
 defined('DB_PORT')      || define('DB_PORT', (int) app_env('DB_PORT', 3306));
 defined('DB_NAME')      || define('DB_NAME', (string) app_env('DB_NAME', 'company_panel'));
 defined('DB_USER')      || define('DB_USER', (string) app_env('DB_USER', 'root'));
-defined('DB_PASS')      || define('DB_PASS', (string) app_env('DB_PASS', ''));
+defined('DB_PASS')      || define('DB_PASS', app_env_raw('DB_PASS', ''));
 defined('DB_CHARSET')   || define('DB_CHARSET', 'utf8mb4');
 defined('DB_COLLATION') || define('DB_COLLATION', 'utf8mb4_persian_ci');
 
