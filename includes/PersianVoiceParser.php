@@ -78,7 +78,7 @@ final class PersianVoiceParser
             $parts = preg_split(
                 // ⚠️ نشانگر فهرست باید کلمهٔ مستقل باشد؛ وگرنه «اولویت فوری» با «اول» بریده می‌شود
                 // («اولویت فوری تسک تحویل» → «ویت تسک تحویل») و «اولین جلسه» هم خراب می‌شود.
-                '/(?:^|\s+)(?:(?:اول|دوم|سوم|چهارم|پنجم|ششم)(?![\x{0600}-\x{06FF}])|شماره\s*[\d\x{06F0}-\x{06F9}]+|[\d\x{06F0}-\x{06F9}]+\s*[)\-.،])\s*[:\-)]?\s*/u',
+                '/(?:^|\s+)(?:(?:اول|دوم|سوم|چهارم|پنجم|ششم)(?![\x{0600}-\x{06FF}])(?!\s+(?:ماه|هفته|سال|وقت)(?:\s|$))|شماره\s*[\d\x{06F0}-\x{06F9}]+|[\d\x{06F0}-\x{06F9}]+\s*[)\-.،])\s*[:\-)]?\s*/u',
                 $seg
             );
             if ($parts === false || count($parts) < 2) {
@@ -250,6 +250,10 @@ final class PersianVoiceParser
 
         // ۴. تشخیص تکرار دوره‌ای
         $recurrenceResult = self::extractRecurrence($text);
+        // قیدهای «ماهانه/روزانه» می‌توانند بخشی از موضوع باشند (گزارش ماهانه).
+        if (str_starts_with($recurrenceResult['matched_phrase'], 'هر')) {
+            $working = str_replace($recurrenceResult['matched_phrase'], ' ', $working);
+        }
 
         // ۵. تشخیص اولویت
         $priorityResult = self::extractPriority($text);
@@ -322,7 +326,7 @@ final class PersianVoiceParser
             'project_id'          => $projectResult['project_id'],
             'project_name'        => $projectResult['project_name'],
             'estimated_minutes'   => $durationResult['minutes'],
-            'recurrence'          => $recurrenceResult,
+            'recurrence'          => $recurrenceResult['recurrence'],
             'category'            => $category,
             'tags'                => implode(',', $tags),
             'subtasks'            => $subtasks,
@@ -771,18 +775,14 @@ final class PersianVoiceParser
     /**
      * تشخیص تکرار تسک
      */
-    private static function extractRecurrence(string $text): string
+    private static function extractRecurrence(string $text): array
     {
-        if (preg_match('/(هر\s*روز|روزانه)/u', $text)) {
-            return 'daily';
+        foreach (['daily' => 'هر\s*روز|روزانه', 'weekly' => 'هر\s*هفته|هفتگی', 'monthly' => 'هر\s*ماه|ماهانه|ماهیانه'] as $recurrence => $pattern) {
+            if (preg_match('/(?<![\p{L}\x{200C}])(?:' . $pattern . ')(?![\p{L}\x{200C}])/u', $text, $match)) {
+                return ['recurrence' => $recurrence, 'matched_phrase' => $match[0]];
+            }
         }
-        if (preg_match('/(هر\s*هفته|هفتگی)/u', $text)) {
-            return 'weekly';
-        }
-        if (preg_match('/(هر\s*ماه|ماهانه|ماهیانه)/u', $text)) {
-            return 'monthly';
-        }
-        return 'none';
+        return ['recurrence' => 'none', 'matched_phrase' => ''];
     }
 
     /**
@@ -790,6 +790,10 @@ final class PersianVoiceParser
      */
     private static function extractPriority(string $text): array
     {
+        // عبارت منفی باید پیش از «فوری» بررسی شود تا بخشی از آن جدا نشود.
+        if (preg_match('/((?:با\s+)?(?:اولویت\s+)?غیر[\s\x{200C}]*فوری)(?![\p{L}])/u', $text, $m)) {
+            return ['priority' => 'low', 'matched_phrases' => [$m[1]]];
+        }
         $rules = [
             'urgent' => '/((?:با\s+)?(?:اولویت\s+)?(?:خیلی\s+فوری|فوری|اضطراری|اورژانسی|خیلی\s+مهم|بسیار\s+مهم|حیاتی|آنی))/u',
             'high'   => '/((?:با\s+)?(?:اولویت\s+بالا|اولویت\s+زیاد|خیلی\s+جدی|مهم))/u',
