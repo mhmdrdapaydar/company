@@ -38,9 +38,18 @@
     setTimeout(function () { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(function () { el.remove(); }, 320); }, 4200);
   }
 
+  // کنش‌های فقط‌خواندنی: همیشه با GET ارسال می‌شوند تا CSRF لازم نباشد
+  var READ_ACTIONS = {
+    me: 1, bootstrap: 1, dashboard_stats: 1, tasks_list: 1, task_get: 1, users_list: 1,
+    departments_list: 1, projects_list: 1, attendance_today: 1, attendance_list: 1,
+    attendance_team: 1, leaves_list: 1, announcements_list: 1, notifications_list: 1,
+    activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1
+  };
+
   /** درخواست به API — پشتیبانی از JSON و FormData */
   function api(action, payload, opts) {
     opts = opts || {};
+    var isRead = !!READ_ACTIONS[action] && !opts.forcePost;
     var url = 'api.php?action=' + encodeURIComponent(action);
     var init = { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' };
     if (opts.form || payload instanceof FormData) {
@@ -48,14 +57,17 @@
       fd.append('csrf_token', window.APP.csrf);
       init.method = 'POST';
       init.body = fd;
-    } else if (payload && Object.keys(payload).length) {
+    } else if (!isRead && payload && Object.keys(payload).length) {
       init.method = 'POST';
       init.headers['Content-Type'] = 'application/json';
       init.headers['X-CSRF-Token'] = window.APP.csrf;
       init.body = JSON.stringify(payload);
     } else {
       var qs = new URLSearchParams();
-      if (payload) Object.keys(payload).forEach(function (k) { qs.append(k, payload[k]); });
+      if (payload) Object.keys(payload).forEach(function (k) {
+        if (payload[k] === null || payload[k] === undefined) return;
+        qs.append(k, payload[k]);
+      });
       url += '&' + qs.toString();
       init.method = 'GET';
     }

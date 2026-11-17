@@ -134,7 +134,14 @@ final class Database
 
         $pdo->exec('PRAGMA encoding = "UTF-8"');
         $pdo->exec('PRAGMA foreign_keys = ON');
-        $pdo->exec('PRAGMA busy_timeout = 5000');
+        $pdo->exec('PRAGMA busy_timeout = 8000');
+        // حالت WAL برای خواندن/نوشتن همزمان بهتر (در صورت پشتیبانی فایل‌سیستم)
+        try {
+            $pdo->exec('PRAGMA journal_mode = WAL');
+            $pdo->exec('PRAGMA synchronous = NORMAL');
+        } catch (Throwable $e) {
+            // نادیده گرفتن؛ برخی فایل‌سیستم‌ها WAL را پشتیبانی نمی‌کنند
+        }
 
         return $pdo;
     }
