@@ -1554,6 +1554,13 @@ try {
                     $val = (string) $data[$key];
                     // 🔒 اگر مقدار ماسک‌شده برگشت (کاربر تغییرش نداده)، کلید فعلی حفظ شود
                     if (in_array($key, ['groq_api_key', 'gemini_api_key'], true)) {
+                        // «__clear__» = حذف صریح کلید (دکمهٔ «حذف کلید» در تنظیمات)
+                        if ($val === '__clear__') {
+                            set_setting($key, '');
+                            log_activity($uid, 'settings', 'setting', null, 'کلید API حذف شد: ' . $key);
+                            continue;
+                        }
+                        // کادر خالی یا مقدار ماسک‌شده = کلید فعلی حفظ شود
                         if ($val === '' || str_contains($val, '•') || str_contains($val, '*')) {
                             continue;
                         }

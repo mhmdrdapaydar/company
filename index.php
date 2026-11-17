@@ -462,7 +462,9 @@ $theme       = 'light';
             </label>
             <label class="field"><span>کلید رایگان Groq (اختیاری)</span><input type="text" id="stGroqKey" dir="ltr" placeholder="gsk_..." autocomplete="off" spellcheck="false"></label>
             <div class="small muted" id="stGroqKeyState" style="margin:-4px 0 10px;line-height:1.8"></div>
+            <button type="button" class="btn btn-sm btn-danger hidden" id="btnClearGroqKey" style="margin:-6px 0 12px">🗑️ حذف کلید Groq</button>
             <label class="field"><span>کلید رایگان Gemini (اختیاری)</span><input type="text" id="stGeminiKey" dir="ltr" placeholder="AIza..." autocomplete="off" spellcheck="false"></label>
+            <button type="button" class="btn btn-sm btn-danger hidden" id="btnClearGeminiKey" style="margin:-6px 0 12px">🗑️ حذف کلید Gemini</button>
             <div class="small muted" style="margin:-4px 0 10px;line-height:1.9">
               🎧 تشخیص گفتار فارسی سه لایه دارد: کلید رایگان Groq (دقیق‌ترین) ← کلید Gemini ← Whisper رایگان بدون کلید (Pollinations).
               اگر هیچ‌کدام در دسترس نبود، دکمه «تبدیل صدا به متن بدون کلید» داخل پنجره ضبط، صدا را در مرورگر تبدیل می‌کند.

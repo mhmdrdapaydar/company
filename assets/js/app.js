@@ -1562,9 +1562,13 @@
       var groqState = document.getElementById('stGroqKeyState');
       if (groqState) {
         groqState.textContent = s.groq_api_key_set
-          ? '✅ کلید Groq ثبت شده است. برای حذف آن، کادر را خالی کنید و ذخیره بزنید.'
+          ? '✅ کلید Groq ثبت شده است. برای تغییر، کلید جدید را وارد کنید یا از دکمهٔ «حذف کلید» استفاده کنید.'
           : '⚠️ کلیدی ثبت نشده است — بدون کلید، تشخیص گفتار فقط در مرورگر انجام می‌شود.';
       }
+      var cg = document.getElementById('btnClearGroqKey');
+      if (cg) cg.classList.toggle('hidden', !s.groq_api_key_set);
+      var cg2 = document.getElementById('btnClearGeminiKey');
+      if (cg2) cg2.classList.toggle('hidden', !s.gemini_api_key_set);
       $('#stSelfTask').checked = s.allow_employee_self_task === '1';
       $('#stPeerTask').checked = s.allow_employee_peer_task === '1';
       var om = document.getElementById('stOfflineMode');
@@ -1672,9 +1676,26 @@
     if (om) om.addEventListener('change', updateOfflineHint);
   }
 
+  /** حذف صریح کلید API (سرور با مقدار «__clear__» آن را پاک می‌کند) */
+  function bindClearKey(btnId, field, label) {
+    var b = document.getElementById(btnId);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      if (!confirm('کلید ' + label + ' حذف شود؟ بعد از حذف، این سرویس دیگر استفاده نمی‌شود.')) return;
+      var payload = { }; payload[field] = '__clear__';
+      api('settings_save', payload).then(function (r) {
+        toast(r.message || 'کلید حذف شد.');
+        loadSettings();
+        renderAiStatus();
+      }).catch(function (e) { toast(e.message, 'error'); });
+    });
+  }
+
   function initSettingsSave() {
     var btn = $('#btnSaveSettings');
     if (!btn) return;
+    bindClearKey('btnClearGroqKey', 'groq_api_key', 'Groq');
+    bindClearKey('btnClearGeminiKey', 'gemini_api_key', 'Gemini');
     btn.addEventListener('click', function () {
       api('settings_save', {
         company_name: $('#stCompanyName').value.trim(),
