@@ -48,8 +48,18 @@ function gen_employee_code(): string
 }
 function gen_project_code(): string
 {
-    $max = (int) Database::fetchValue("SELECT COUNT(*) FROM projects", [], 0);
-    return 'PRJ-' . (101 + $max);
+    // ⚠️ نباید از COUNT استفاده شود: با حذف یک پروژه شماره‌ها عقب می‌افتند و کد تکراری تولید می‌شود.
+    $nums = Database::fetchAll("SELECT code FROM projects WHERE code LIKE 'PRJ-%'");
+    $max = 100;
+    foreach ($nums as $row) {
+        $num = (int) preg_replace('/\D+/', '', (string) $row['code']);
+        if ($num > $max) $max = $num;
+    }
+    $next = $max + 1;
+    while (Database::fetchOne('SELECT id FROM projects WHERE code = ? LIMIT 1', ['PRJ-' . $next])) {
+        $next++;
+    }
+    return 'PRJ-' . $next;
 }
 function parse_date_input(mixed $v): ?string
 {
@@ -142,6 +152,11 @@ function create_task_record(array $input, string $createdVia, ?string $voiceFile
     $startDate = parse_date_input($input['start_date'] ?? null);
     $dueDate = parse_date_input($input['due_date'] ?? null);
     $dueTime = parse_time_input($input['due_time'] ?? null);
+    // ⚠️ جلوگیری از حذف بی‌صدای تاریخ/ساعت در اثر ورودی نامعتبر
+    foreach ([['start_date', 'تاریخ شروع', $startDate], ['due_date', 'تاریخ سررسید', $dueDate], ['due_time', 'ساعت سررسید', $dueTime]] as [$k, $lbl, $parsed]) {
+        $raw = $input[$k] ?? null;
+        if ($parsed === null && $raw !== null && trim((string) $raw) !== '') json_error($lbl . ' معتبر نیست.');
+    }
     $completedAt = $status === 'done' ? $now : null;
 
     $taskId = Database::insert(
@@ -460,9 +475,21 @@ try {
                 $at = (int) $data['assigned_to'];
                 if ($at > 0 && Auth::canAssignTo($at)) { $sets[] = 'assigned_to = ?'; $params[] = $at; }
             }
-            if (array_key_exists('start_date', $data)) { $sets[] = 'start_date = ?'; $params[] = parse_date_input($data['start_date']); }
-            if (array_key_exists('due_date', $data)) { $sets[] = 'due_date = ?'; $params[] = parse_date_input($data['due_date']); }
-            if (array_key_exists('due_time', $data)) { $sets[] = 'due_time = ?'; $params[] = parse_time_input($data['due_time']); }
+            if (array_key_exists('start_date', $data)) {
+                $sd = parse_date_input($data['start_date']);
+                if ($sd === null && trim((string) $data['start_date']) !== '') json_error('تاریخ شروع نامعتبر است.');
+                $sets[] = 'start_date = ?'; $params[] = $sd;
+            }
+            if (array_key_exists('due_date', $data)) {
+                $dd = parse_date_input($data['due_date']);
+                if ($dd === null && trim((string) $data['due_date']) !== '') json_error('تاریخ سررسید نامعتبر است.');
+                $sets[] = 'due_date = ?'; $params[] = $dd;
+            }
+            if (array_key_exists('due_time', $data)) {
+                $dt = parse_time_input($data['due_time']);
+                if ($dt === null && trim((string) $data['due_time']) !== '') json_error('ساعت سررسید نامعتبر است.');
+                $sets[] = 'due_time = ?'; $params[] = $dt;
+            }
             if (isset($data['estimated_minutes'])) { $sets[] = 'estimated_minutes = ?'; $params[] = max(0, min(10080, (int) $data['estimated_minutes'])); }
             if (isset($data['category'])) { $sets[] = 'category = ?'; $params[] = clean_line($data['category'], 80); }
             if (isset($data['tags'])) { $sets[] = 'tags = ?'; $params[] = clean_line($data['tags'], 500); }
@@ -724,7 +751,8 @@ try {
             $password = (string) ($data['password'] ?? '');
             $email = clean_line($data['email'] ?? '', 191);
             $role = strtolower(clean_line($data['role'] ?? 'employee', 20));
-            if (!in_array($role, ['admin', 'manager', 'employee'], true)) $role = 'employee';
+            if ($role === '') $role = 'employee';
+            if (!in_array($role, ['admin', 'manager', 'employee'], true)) json_error('نقش کاربری نامعتبر است. یکی از نقش‌های مدیر، مدیر میانی یا کارمند را انتخاب کنید.');
             if ($role === 'admin') require_admin();
             if ($fullName === '' || $username === '' || $password === '') json_error('نام و نام خانوادگی، نام کاربری و رمز عبور الزامی است.');
             if (mb_strlen($password, 'UTF-8') < 6) json_error('رمز عبور باید حداقل ۶ کاراکتر باشد.');
@@ -759,7 +787,12 @@ try {
             if ((string) $target['role'] === 'admin' && !$isAdmin) json_error('فقط مدیر شرکت می‌تواند حساب مدیر را ویرایش کند.', 403);
             $sets = []; $params = [];
             if (isset($data['full_name'])) { $sets[] = 'full_name = ?'; $params[] = clean_line($data['full_name'], 191); }
-            if (isset($data['email'])) { $sets[] = 'email = ?'; $params[] = clean_line($data['email'], 191); }
+            if (isset($data['email'])) {
+                $email = clean_line($data['email'], 191);
+                if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) json_error('قالب ایمیل معتبر نیست.');
+                if ($email !== '' && Database::fetchOne('SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1', [$email, $uid])) json_error('این ایمیل قبلاً برای کاربر دیگری ثبت شده است.');
+                $sets[] = 'email = ?'; $params[] = $email !== '' ? $email : null;
+            }
             if (isset($data['phone'])) { $sets[] = 'phone = ?'; $params[] = clean_line($data['phone'], 30); }
             if (isset($data['role'])) {
                 $rl = strtolower(clean_line($data['role'], 20));
@@ -888,6 +921,11 @@ try {
             $name = clean_line($data['name'] ?? '', 191);
             if ($name === '') json_error('نام پروژه را وارد کنید.');
             $code = clean_line($data['code'] ?? '', 50) ?: gen_project_code();
+            $projStart = parse_date_input($data['start_date'] ?? null);
+            if ($projStart === null && trim((string) ($data['start_date'] ?? '')) !== '') json_error('تاریخ شروع پروژه نامعتبر است.');
+            if ($projStart === null) $projStart = today_date();
+            $rawProjDue = $data['due_date'] ?? null;
+            if ($rawProjDue !== null && trim((string) $rawProjDue) !== '' && parse_date_input($rawProjDue) === null) json_error('تاریخ پایان پروژه نامعتبر است.');
             if (Database::fetchOne('SELECT id FROM projects WHERE code = ? LIMIT 1', [$code])) json_error('کد پروژه تکراری است.');
             $id = Database::insert(
                 'INSERT INTO projects (name, code, description, color, status, department_id, owner_id, start_date, due_date, created_by, created_at, updated_at)
@@ -897,13 +935,15 @@ try {
                     in_array(strtolower(clean_line($data['status'] ?? 'active', 20)), ['active', 'paused', 'done', 'archived'], true) ? strtolower(clean_line($data['status'], 20)) : 'active',
                     !empty($data['department_id']) ? (int) $data['department_id'] : null,
                     !empty($data['owner_id']) ? (int) $data['owner_id'] : $uid,
-                    parse_date_input($data['start_date'] ?? null) ?: today_date(),
+                    $projStart,
                     parse_date_input($data['due_date'] ?? null),
                     $uid, now_datetime(), now_datetime(),
                 ]
             );
             log_activity($uid, 'create_project', 'project', $id, 'پروژه «' . $name . '» ایجاد شد.');
-            json_success(['id' => $id], 'پروژه ایجاد شد.');
+            // هم‌ساخت با سایر اکشن‌های ایجاد: علاوه بر id، خود آبجکت هم برگردانده می‌شود
+            $created = Database::fetchOne('SELECT * FROM projects WHERE id = ?', [$id]);
+            json_success(['id' => $id, 'project' => $created], 'پروژه ایجاد شد.');
             break;
         }
 
@@ -935,7 +975,10 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             require_manager();
             $id = (int) ($data['id'] ?? 0);
+            if ($id <= 0 || !Database::fetchOne('SELECT id FROM projects WHERE id = ? LIMIT 1', [$id])) json_error('پروژه موردنظر یافت نشد.', 404);
+            Database::execute('UPDATE tasks SET project_id = NULL WHERE project_id = ?', [$id]);
             Database::execute('DELETE FROM projects WHERE id = ?', [$id]);
+            log_activity($uid, 'delete_project', 'project', $id, 'پروژه حذف شد.');
             json_success([], 'پروژه حذف شد.');
             break;
         }
@@ -978,7 +1021,12 @@ try {
             $targetId = $isManager && !empty($data['user_id']) ? (int) $data['user_id'] : $uid;
             if ($targetId !== $uid && !$isManager) json_error('مجوز ثبت حضور برای سایر کارمندان را ندارید.', 403);
             if (!Database::fetchOne('SELECT id FROM users WHERE id = ?', [$targetId])) json_error('کارمند یافت نشد.', 404);
-            $workDate = parse_date_input($data['work_date'] ?? null) ?: today_date();
+            $rawWorkDate = $data['work_date'] ?? null;
+            $workDate = parse_date_input($rawWorkDate);
+            if ($workDate === null) {
+                if ($rawWorkDate !== null && trim((string) $rawWorkDate) !== '') json_error('تاریخ حضور نامعتبر است. تاریخ را به صورت شمسی (مثلاً ۱۴۰۵/۰۹/۰۱) وارد کنید.');
+                $workDate = today_date();
+            }
             $checkIn = parse_time_input($data['check_in'] ?? null);
             $checkOut = parse_time_input($data['check_out'] ?? null);
             if (!$checkIn) json_error('ساعت ورود را به صورت معتبر (مثلاً ۰۸:۳۰) وارد کنید.');
@@ -1345,6 +1393,8 @@ try {
                 $l['id'] = (int) $l['id'];
                 $l['created_human'] = Jalali::toDateTimeHuman($l['created_at'] ?? null);
                 $l['created_ago'] = Jalali::timeAgo($l['created_at'] ?? null);
+                $l['action_label'] = activity_action_label((string) $l['action']);
+                $l['user_name'] = $l['user_name'] ?? 'سیستم';
             }
             unset($l);
             json_success(['logs' => $rows]);
@@ -1394,7 +1444,12 @@ try {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
             $sets = []; $params = [];
             if (isset($data['full_name'])) { $sets[] = 'full_name = ?'; $params[] = clean_line($data['full_name'], 191); }
-            if (isset($data['email'])) { $sets[] = 'email = ?'; $params[] = clean_line($data['email'], 191); }
+            if (isset($data['email'])) {
+                $email = clean_line($data['email'], 191);
+                if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) json_error('قالب ایمیل معتبر نیست.');
+                if ($email !== '' && Database::fetchOne('SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1', [$email, $uid])) json_error('این ایمیل قبلاً برای کاربر دیگری ثبت شده است.');
+                $sets[] = 'email = ?'; $params[] = $email !== '' ? $email : null;
+            }
             if (isset($data['phone'])) { $sets[] = 'phone = ?'; $params[] = clean_line($data['phone'], 30); }
             if (isset($data['position_title'])) { $sets[] = 'position_title = ?'; $params[] = clean_line($data['position_title'], 150); }
             if (isset($data['bio'])) { $sets[] = 'bio = ?'; $params[] = clean_text($data['bio'], 2000); }
@@ -1444,6 +1499,11 @@ try {
                 if (array_key_exists($key, $data)) {
                     $val = (string) $data[$key];
                     if (in_array($key, ['company_name', 'company_slogan'], true)) $val = clean_line($val, 300);
+                    if (in_array($key, ['work_start_time', 'work_end_time'], true)) {
+                        $parsedTime = parse_time_input($val);
+                        if ($parsedTime === null) json_error('ساعت کاری باید به صورت معتبر (مثلاً ۰۸:۳۰) وارد شود.');
+                        $val = $parsedTime;
+                    }
                     if ($key === 'ai_provider') {
                         $val = strtolower(clean_line($val, 30));
                         if (!in_array($val, ['auto', 'groq', 'gemini', 'pollinations', 'local'], true)) $val = 'auto';

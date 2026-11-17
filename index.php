@@ -229,8 +229,7 @@ $theme       = 'light';
             <button class="btn btn-primary btn-sm" id="btnCalNewTask">➕ تسک در این ماه</button>
             <span class="small muted">با کلیک روی هر روز تسک جدید با همان تاریخ ثبت کنید</span>
           </div>
-          <div class="cal-grid" id="calWeekdays"></div>
-          <div class="cal-grid" id="calGrid" style="margin-top:8px"><div class="loading"><div class="spinner"></div></div></div>
+          <div class="cal-grid cal-grid-main" id="calGrid"><div class="loading"><div class="spinner"></div></div></div>
         </div>
       </section>
 

@@ -197,11 +197,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
 /* تقویم */
 .cal-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .cal-head h3{font-size:17px}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
-.cal-weekday{text-align:center;font-size:12px;font-weight:800;color:var(--muted);padding:6px 0}
+/* تقویم: سرستون‌ها و روزها در یک گرید ۷ ستونه با ستون‌های دقیقاً هم‌عرض.
+   minmax(0,1fr) از کشیده‌شدن یک ستون به‌خاطر محتوای طولانی (عنوان تسک) جلوگیری می‌کند. */
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:stretch}
+.cal-grid > .cal-weekday{grid-row:1}
+.cal-weekday{text-align:center;font-size:12px;font-weight:800;color:var(--muted);padding:6px 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-weekday.fri{color:var(--rose)}
-.cal-day{background:var(--card);border:1px solid var(--border);border-radius:12px;min-height:104px;padding:8px;font-size:12px;position:relative}
-.cal-day.empty{background:transparent;border:0}
+.cal-day{background:var(--card);border:1px solid var(--border);border-radius:12px;min-height:104px;min-width:0;padding:8px;font-size:12px;position:relative;overflow:hidden}
+.cal-day.empty{background:transparent;border:1px solid transparent;box-shadow:none;pointer-events:none;min-height:104px}
 .cal-day.today{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .cal-day.friday{background:color-mix(in srgb,var(--rose) 5%,var(--card))}
 .cal-day .dnum{font-weight:900;font-size:15px;display:flex;align-items:center;gap:6px}

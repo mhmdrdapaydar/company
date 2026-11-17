@@ -807,11 +807,16 @@
   }
   function renderCalendar(cal) {
     $('#calTitle').textContent = cal.title + ' — ' + (cal.season || '');
-    $('#calWeekdays').innerHTML = J.WEEKDAY_NAMES.map(function (w, i) {
-      return '<div class="cal-weekday' + (i === 6 ? ' fri' : '') + '">' + w + '</div>';
-    }).join('');
-    var cells = [];
-    for (var i = 0; i < cal.start_weekday; i++) cells.push('<div class="cal-day empty"></div>');
+    // ⚠️ سرستون‌ها و روزها در «یک» گرید رندر می‌شوند تا ستون‌ها هرگز ناهم‌تراز نشوند
+    // (قبلاً دو گرید جدا بودند و با اسکرول یا تفاوت اندازه سلول‌ها جابه‌جا می‌شدند)
+    var cells = J.WEEKDAY_NAMES.map(function (w, i) {
+      return '<div class="cal-weekday' + (i === 6 ? ' fri' : '') + '" role="columnheader">' + w + '</div>';
+    });
+    var startIdx = ((Number(cal.start_weekday) % 7) + 7) % 7;
+    // ۷ خانه اول را نام روزها پر کرده‌اند؛ برای اینکه روز اول دقیقاً زیر نام روز خودش بنشیند
+    // باید به تعداد startIdx خانه خالی اضافه کنیم (نه 7-startIdx).
+    var leading = startIdx;
+    for (var i = 0; i < leading; i++) cells.push('<div class="cal-day empty" aria-hidden="true"></div>');
     cal.days.forEach(function (d) {
       var tasks = d.tasks || [];
       cells.push('<div class="cal-day' + (d.is_today ? ' today' : '') + (d.is_friday ? ' friday' : '') + '" data-date="' + d.gregorian + '" data-jalali="' + d.jalali + '">' +
@@ -823,10 +828,13 @@
         (tasks.length > 3 ? '<div class="cal-more">+' + FAT(tasks.length - 3) + ' تسک دیگر</div>' : '') +
         '</div>');
     });
-    var total = cal.days.length + cal.start_weekday;
+    var total = cal.days.length + leading;
     var pad = (7 - (total % 7)) % 7;
-    for (var k = 0; k < pad; k++) cells.push('<div class="cal-day empty"></div>');
+    for (var k = 0; k < pad; k++) cells.push('<div class="cal-day empty" aria-hidden="true"></div>');
     $('#calGrid').innerHTML = cells.join('');
+    // سرستون‌ها حالا داخل #calGrid هستند؛ ظرف قدیمی خالی می‌ماند
+    var oldHead = document.getElementById('calWeekdays');
+    if (oldHead) oldHead.style.display = 'none';
     $$('#calGrid .cal-task').forEach(function (el) {
       el.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -1369,7 +1377,7 @@
       if (!res.logs.length) { $('#activityBody').innerHTML = '<tr><td colspan="4" class="center muted">فعالیتی ثبت نشده است.</td></tr>'; return; }
       var icons = { create_task: '➕', update_task: '✏️', delete_task: '🗑️', comment: '💬', attach: '📎', clock_in: '⏰', clock_out: '🚪', leave_request: '🌴', leave_review: '✅', create_user: '👥', update_user: '👤', delete_user: '❌', create_project: '🚀', create_department: '🏢', announcement: '📢', voice_preview: '🎙️', settings: '⚙️', password_change: '🔑' };
       $('#activityBody').innerHTML = res.logs.map(function (l) {
-        return '<tr><td>' + esc(l.user_name || 'سیستم') + '</td><td>' + (icons[l.action] || '•') + ' <code class="small">' + esc(l.action) + '</code></td>' +
+        return '<tr><td>' + esc(l.user_name || 'سیستم') + '</td><td>' + (icons[l.action] || '•') + ' ' + esc(l.action_label || l.action) + '</td>' +
           '<td class="small">' + esc(l.description) + '</td><td class="small">' + esc(l.created_human) + '<div class="muted">' + esc(l.created_ago) + '</div></td></tr>';
       }).join('');
     }).catch(function (err) { $('#activityBody').innerHTML = '<tr><td colspan="4" class="center muted">' + esc(err.message) + '</td></tr>'; });

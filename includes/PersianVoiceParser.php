@@ -694,10 +694,20 @@ final class PersianVoiceParser
             }
         }
         if ($bestId !== null) {
+            // ⚠️ نکته مهم: اگر عبارت تطبیق‌یافته بخش بزرگی از «موضوع» تسک را تشکیل دهد،
+            // نباید از متن حذف شود؛ وگرنه عنوان تسک ناقص می‌شود
+            // (مثال: «ارسال گزارش مالی ماهانه» → «ارسال»).
+            // فقط وقتی عبارت را حذف می‌کنیم که کاربر صریحاً «پروژه ...» گفته باشد
+            // یا عبارت تطبیق کوتاه و صرفاً اشاره‌ای باشد.
+            $matchedLen = mb_strlen($bestPhrase, 'UTF-8');
+            $textLen = mb_strlen(trim(preg_replace('/\s+/u', ' ', $normText) ?? ''), 'UTF-8');
+            $isExplicit = (bool) preg_match('/(?:پروژه|طرح)\s*' . preg_quote($bestPhrase, '/') . '/u', (string) $normText);
+            $dominant = $textLen > 0 && ($matchedLen / $textLen) > 0.34;
+            $stripPhrase = ($isExplicit || !$dominant) ? $bestPhrase : '';
             return [
                 'project_id'      => $bestId,
                 'project_name'    => $bestName,
-                'matched_phrases' => [$bestPhrase],
+                'matched_phrases' => $stripPhrase !== '' ? [$stripPhrase] : [],
             ];
         }
         return ['project_id' => null, 'project_name' => '', 'matched_phrases' => []];
@@ -739,6 +749,19 @@ final class PersianVoiceParser
 
         // حالت ۲: پاکسازی افعال دستوری و عبارات اضافه از جمله باقی‌مانده
         $t = $strippedText;
+
+        // حذف عبارات زمانی نسبی که در فیلد تاریخ ثبت شده‌اند ولی از متن حذف نشده‌اند
+        // (مثل «هفته آینده»، «ماه بعد»، «آخر هفته»، «دو هفته دیگر»)
+        $timeRefPatterns = [
+            '/\b(?:این\s+هفته|هفته\s+آینده|هفته\s+بعد|هفته\s+گذشته|هفته\s+پیش|آخر\s+هفته|اول\s+هفته)\b\s*/u',
+            '/\b(?:این\s+ماه|ماه\s+آینده|ماه\s+بعد|ماه\s+گذشته|ماه\s+پیش)\b\s*/u',
+            '/\b(?:این\s+سال|سال\s+آینده|سال\s+بعد|سال\s+گذشته)\b\s*/u',
+            '/\b(?:دو|سه|چهار|پنج|شش|هفت|ده|چند)\s+(?:هفته|ماه|سال|روز)\s+(?:آینده|بعد|دیگر|پیش)\b\s*/u',
+        ];
+        foreach ($timeRefPatterns as $rx) {
+            $t = preg_replace($rx, ' ', $t) ?? $t;
+        }
+        $t = preg_replace('/\s+/u', ' ', trim($t)) ?? $t;
 
         // حذف عبارات آغازین محاوره‌ای و رسمی
         $leadingPatterns = [

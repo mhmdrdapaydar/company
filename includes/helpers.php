@@ -264,6 +264,49 @@ function user_role_label(string $role): string
     };
 }
 
+/**
+ * برچسب فارسی برای اکشن‌های گزارش فعالیت
+ * (به‌جای نمایش کد خام انگلیسی مثل clock_out)
+ */
+function activity_action_label(string $action): string
+{
+    static $map = [
+        'create_task'       => 'ایجاد تسک',
+        'update_task'       => 'ویرایش تسک',
+        'delete_task'       => 'حذف تسک',
+        'comment'           => 'ثبت نظر',
+        'attach'            => 'افزودن پیوست',
+        'clock_in'          => 'ثبت ورود',
+        'clock_out'         => 'ثبت خروج',
+        'attendance_manual' => 'ثبت دستی حضور',
+        'leave_request'     => 'درخواست مرخصی',
+        'leave_review'      => 'بررسی مرخصی',
+        'create_user'       => 'ایجاد کارمند',
+        'update_user'       => 'ویرایش کارمند',
+        'delete_user'       => 'حذف کارمند',
+        'create_project'    => 'ایجاد پروژه',
+        'update_project'    => 'ویرایش پروژه',
+        'delete_project'    => 'حذف پروژه',
+        'create_department' => 'ایجاد واحد',
+        'update_department' => 'ویرایش واحد',
+        'delete_department' => 'حذف واحد',
+        'announcement'      => 'اطلاعیه',
+        'voice_preview'     => 'پردازش صوتی',
+        'voice_create'      => 'ایجاد تسک صوتی',
+        'settings'          => 'تغییر تنظیمات',
+        'password_change'   => 'تغییر رمز عبور',
+        'profile_update'    => 'ویرایش پروفایل',
+        'subtask_toggle'    => 'تغییر وضعیت زیرتسک',
+        'subtask_add'       => 'افزودن زیرتسک',
+        'subtask_delete'    => 'حذف زیرتسک',
+        'timer_start'       => 'شروع زمان‌سنج',
+        'timer_stop'        => 'پایان زمان‌سنج',
+        'login'             => 'ورود به سامانه',
+        'logout'            => 'خروج از سامانه',
+    ];
+    return $map[$action] ?? $action;
+}
+
 function leave_type_label(string $type): string
 {
     return match ($type) {
