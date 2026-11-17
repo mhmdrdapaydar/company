@@ -94,7 +94,7 @@ final class Auth
             return ['ok' => false, 'message' => 'حساب کاربری شما غیرفعال شده است. با مدیر شرکت تماس بگیرید.'];
         }
 
-        if (session_status() === PHP_SESSION_ACTIVE) {
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
             session_regenerate_id(true);
         }
 
