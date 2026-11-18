@@ -33,6 +33,9 @@ $theme       = 'light';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icons/app-192.png">
 <meta name="csrf-token" content="<?= e($csrf) ?>">
 <meta name="description" content="پنل مدیریت شرکت، تسک‌ها، پروژه‌ها و دستیار صوتی هوش مصنوعی فارسی">
 <title><?= e($companyName) ?> — پنل مدیریت شرکت</title>
@@ -73,6 +76,8 @@ $theme       = 'light';
       <a href="#settings" data-section="settings"><span>⚙️</span> تنظیمات سیستم</a>
       <?php endif; ?>
       <a href="export.php?type=tasks&format=print" target="_blank"><span>🖨️</span> گزارش چاپی تسک‌ها</a>
+      <a href="#" id="btnInstallApp"><span>📲</span> نصب برنامه</a>
+      <a href="#" id="btnDesktopNotifications"><span>🔔</span> فعال‌سازی اعلان دستگاه</a>
       <a href="logout.php"><span>🚪</span> خروج از حساب</a>
     </nav>
     <div class="sidebar-user">
@@ -505,5 +510,6 @@ window.APP = {
 };
 </script>
 <script src="assets/js/app.js?v=<?= e(APP_VERSION) ?>"></script>
+<script src="assets/js/pwa.js?v=<?= e(APP_VERSION) ?>"></script>
 </body>
 </html>

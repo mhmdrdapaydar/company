@@ -52,7 +52,7 @@
     departments_list: 1, projects_list: 1,
     announcements_list: 1, notifications_list: 1,
     activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1, ai_status: 1,
-    notifications_unread: 1
+    notifications_unread: 1, live_reference: 1
   };
 
   /** درخواست به API — پشتیبانی از JSON و FormData */
@@ -378,12 +378,15 @@
   }
 
   var searchTimer = null;
-  function loadTasks() {
-    $('#tasksListView').innerHTML = '<div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div>';
+  function loadTasks(silent) {
+    silent = silent === true;
+    if (!silent) $('#tasksListView').innerHTML = '<div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div>';
     api('tasks_list', taskQuery()).then(function (res) {
+      if (silent && (!canRefreshLive() || state.section !== 'tasks')) return;
       state.tasks = res.tasks || [];
       renderTasks();
     }).catch(function (err) {
+      if (silent) return;
       $('#tasksListView').innerHTML = emptyState('⚠️', err.message);
       toast(err.message, 'error');
     });
@@ -772,16 +775,18 @@
   }
 
   /* ================= تقویم ================= */
-  function loadCalendar(jy, jm) {
+  function loadCalendar(jy, jm, silent) {
     var t = J.todayJalali();
     jy = jy || state.calYear || t[0];
     jm = jm || state.calMonth || t[1];
     state.calYear = jy; state.calMonth = jm;
-    $('#calGrid').innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>';
+    if (!silent) $('#calGrid').innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>';
     api('calendar_month', { jy: jy, jm: jm }).then(function (res) {
+      if (silent && (!canRefreshLive() || state.section !== 'calendar' || jy !== state.calYear || jm !== state.calMonth)) return;
       state.calendar = res.calendar;
       renderCalendar(res.calendar);
     }).catch(function (err) {
+      if (silent) return;
       $('#calGrid').innerHTML = emptyState('⚠️', err.message);
     });
   }
@@ -854,12 +859,14 @@
   }
 
   /* ================= پروژه‌ها ================= */
-  function loadProjects() {
-    $('#projectsGrid').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  function loadProjects(silent) {
+    silent = silent === true;
+    if (!silent) $('#projectsGrid').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     api('projects_list').then(function (res) {
+      if (silent && (!canRefreshLive() || state.section !== 'projects')) return;
       state.projects = res.projects || [];
       renderProjects();
-    }).catch(function (err) { $('#projectsGrid').innerHTML = emptyState('⚠️', err.message); });
+    }).catch(function (err) { if (!silent) $('#projectsGrid').innerHTML = emptyState('⚠️', err.message); });
   }
   function renderProjects() {
     var grid = $('#projectsGrid');
@@ -1261,13 +1268,26 @@
     }
   }
 
+  function showDeviceNotification(n) {
+    if (!window.isSecureContext || !('Notification' in window) || Notification.permission !== 'granted') return;
+    var options = { body: 'اعلان تازه‌ای در همکار پلاس دارید.', icon: 'assets/icons/app-192.png', tag: 'hamkar-' + n.id };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(function (registration) {
+        if (registration && registration.showNotification) return registration.showNotification('اعلان جدید', options);
+        if (typeof Notification === 'function') new Notification('اعلان جدید', options);
+      }).catch(function () {});
+    } else {
+      try { new Notification('اعلان جدید', options); } catch (e) {}
+    }
+  }
+
   /**
    * نظرسنجی سبک: هر ۱۵ ثانیه فقط «تعداد نخوانده» و «آخرین شناسه» را می‌پرسد.
    * با اعلان تازه (last_id بالاتر)، فهرست را می‌گیرد و برای هر آیتم تازه
    * کارت گوشهٔ صفحه نشان می‌دهد.
    */
   function pollNotifications() {
-    if (document.hidden || notifPending) return;
+    if (notifPending) return;
     var version = notifVersion;
     api('notifications_unread').then(function (res) {
       if (version !== notifVersion || notifPending) return;
@@ -1293,7 +1313,9 @@
         notifSeenIds = {};
         (list.notifications || []).forEach(function (x) { notifSeenIds[x.id] = 1; });
         // فقط ۳ مورد آخر را نوتیف کن (نه سیل کارت)
-        fresh.sort(function (a, b) { return a.id - b.id; }).slice(-3).forEach(showNotifPopup);
+        fresh.sort(function (a, b) { return a.id - b.id; });
+        fresh.forEach(showDeviceNotification);
+        fresh.slice(-3).forEach(showNotifPopup);
         // اگر صفحهٔ اعلان‌ها باز است، فهرست را هم تازه کن
         if (state.section === 'notifications') loadNotifications();
       }).catch(function () {});
@@ -1317,6 +1339,72 @@
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) pollNotifications();
     });
+  }
+
+  /* Refresh the active view while preserving open forms and task drafts. */
+  function canRefreshLive() {
+    if (document.hidden || document.querySelector('.modal-backdrop.open, .drawer.open')) return false;
+    var active = document.activeElement;
+    return !(active && active.matches && active.matches('input, textarea, select, [contenteditable="true"]'));
+  }
+  function refreshLiveView() {
+    if (!canRefreshLive()) return;
+    switch (state.section) {
+      case 'dashboard': loadDashboard(); break;
+      case 'tasks': loadTasks(true); break;
+      case 'calendar': loadCalendar(state.calYear, state.calMonth, true); break;
+      case 'projects': loadProjects(true); break;
+      case 'employees': loadEmployees(); break;
+      case 'departments': loadDepartments(); break;
+      case 'announcements': loadAnnouncements(); break;
+      case 'notifications': if (!notifPending) loadNotifications(); break;
+      case 'activity': loadActivity(); break;
+    }
+  }
+  function updateLiveSelect(select, items, emptyLabel) {
+    if (!select) return;
+    var current = select.value;
+    var fragment = document.createDocumentFragment();
+    if (emptyLabel !== null) {
+      var empty = document.createElement('option'); empty.value = ''; empty.textContent = emptyLabel; fragment.appendChild(empty);
+    }
+    items.forEach(function (item) {
+      var option = document.createElement('option'); option.value = String(item.id);
+      option.textContent = item.name || item.full_name || '';
+      if (item.department_name) option.textContent += ' — ' + item.department_name;
+      fragment.appendChild(option);
+    });
+    select.replaceChildren(fragment);
+    if (Array.prototype.some.call(select.options, function (option) { return option.value === current; })) select.value = current;
+  }
+  function refreshLiveReferences() {
+    if (!canRefreshLive()) return;
+    api('live_reference').then(function (data) {
+      if (!canRefreshLive() || !Array.isArray(data.users) || !Array.isArray(data.projects)) return;
+      var users = data.users, projects = data.projects;
+      if (JSON.stringify(users.map(function (u) { return [u.id, u.full_name, u.department_name]; })) !==
+          JSON.stringify((APP.users || []).map(function (u) { return [u.id, u.full_name, u.department_name]; }))) {
+        APP.users = users;
+        updateLiveSelect($('#tfAssignee'), users, null);
+        updateLiveSelect($('#taskUserFilter'), users, 'همه کارمندان');
+        var template = document.getElementById('voiceTaskTpl');
+        if (template && template.content) updateLiveSelect(template.content.querySelector('[data-f="assigned_to"]'), users, null);
+      }
+      if (JSON.stringify(projects.map(function (p) { return [Number(p.id), p.name]; })) !==
+          JSON.stringify((APP.projects || []).map(function (p) { return [Number(p.id), p.name]; }))) {
+        APP.projects = projects;
+        updateLiveSelect($('#tfProject'), projects, 'بدون پروژه');
+        updateLiveSelect($('#taskProjectFilter'), projects, 'همه پروژه‌ها');
+        var tpl = document.getElementById('voiceTaskTpl');
+        if (tpl && tpl.content) updateLiveSelect(tpl.content.querySelector('[data-f="project_id"]'), projects, 'بدون پروژه');
+      }
+    }).catch(function () {});
+  }
+  function initLiveView() {
+    setInterval(refreshLiveView, 15000);
+    setInterval(refreshLiveReferences, 30000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshLiveView(); });
+    window.addEventListener('online', function () { refreshLiveView(); refreshLiveReferences(); });
   }
 
   /* ================= فعالیت‌ها ================= */
@@ -1606,6 +1694,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     initTheme();
     initClock();
+    initLiveView();
     initNav();
     initTaskToolbar();
     initTaskForm();
@@ -1636,6 +1725,7 @@
       notifSeenIds = {};
       (res.notifications || []).forEach(function (x) { notifSeenIds[x.id] = 1; });
       notifSeenLastId = (res.notifications || []).reduce(function (m, x) { return Math.max(m, Number(x.id) || 0); }, 0);
+      notifBooting = false;
       initNotifPolling();
     }).catch(function () { initNotifPolling(); });
   });

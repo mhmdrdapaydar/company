@@ -428,7 +428,8 @@ function create_notification(
     string $title,
     string $message,
     string $entityType = 'task',
-    ?int $entityId = null
+    ?int $entityId = null,
+    bool $required = false
 ): void {
     if ($actorId !== null && $userId === $actorId) {
         return;
@@ -447,8 +448,9 @@ function create_notification(
                 now_datetime(),
             ]
         );
-    } catch (Throwable) {
-        // نادیده‌گرفتن خطای غیربحرانی اعلان
+    } catch (Throwable $e) {
+        error_log('Notification insert failed: ' . $e->getMessage());
+        if ($required) throw $e;
     }
 }
 

@@ -159,38 +159,40 @@ function create_task_record(array $input, string $createdVia, ?string $voiceFile
     }
     $completedAt = $status === 'done' ? $now : null;
 
-    $taskId = Database::insert(
-        'INSERT INTO tasks (task_code, title, description, status, priority, progress, project_id, department_id, assigned_to, created_by, start_date, due_date, due_time, estimated_minutes, recurrence, category, tags, created_via, voice_file, voice_transcript, voice_duration_sec, ai_provider, completed_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-            gen_task_code(), $title, clean_text($input['description'] ?? '', 8000), $status, $priority, $progress,
-            $projectId, $deptId, $assignedTo, $uid, $startDate, $dueDate, $dueTime,
-            max(0, min(10080, (int) ($input['estimated_minutes'] ?? 0))), $recurrence,
-            clean_line($input['category'] ?? '', 80), clean_line($input['tags'] ?? '', 500),
-            $createdVia, $voiceFile, $transcript ? clean_text($transcript, 8000) : null,
-            max(0, $voiceDuration), $aiProvider, $completedAt, $now, $now,
-        ]
-    );
+    return Database::transaction(function () use ($input, $createdVia, $voiceFile, $transcript, $aiProvider, $voiceDuration, $now, $title, $assignedTo, $projectId, $deptId, $status, $priority, $progress, $recurrence, $startDate, $dueDate, $dueTime, $completedAt, $uid): int {
+        $taskId = Database::insert(
+            'INSERT INTO tasks (task_code, title, description, status, priority, progress, project_id, department_id, assigned_to, created_by, start_date, due_date, due_time, estimated_minutes, recurrence, category, tags, created_via, voice_file, voice_transcript, voice_duration_sec, ai_provider, completed_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                gen_task_code(), $title, clean_text($input['description'] ?? '', 8000), $status, $priority, $progress,
+                $projectId, $deptId, $assignedTo, $uid, $startDate, $dueDate, $dueTime,
+                max(0, min(10080, (int) ($input['estimated_minutes'] ?? 0))), $recurrence,
+                clean_line($input['category'] ?? '', 80), clean_line($input['tags'] ?? '', 500),
+                $createdVia, $voiceFile, $transcript ? clean_text($transcript, 8000) : null,
+                max(0, $voiceDuration), $aiProvider, $completedAt, $now, $now,
+            ]
+        );
 
-    $subtasks = $input['subtasks'] ?? [];
-    if (is_string($subtasks)) {
-        $subtasks = array_filter(array_map('trim', preg_split('/\n+/', $subtasks) ?: []));
-    }
-    if (is_array($subtasks)) {
-        $ord = 1;
-        foreach (array_slice($subtasks, 0, 12) as $st) {
-            $stTitle = clean_line(is_array($st) ? ($st['title'] ?? '') : $st, 255);
-            if ($stTitle === '') continue;
-            Database::insert(
-                'INSERT INTO task_subtasks (task_id, title, is_done, sort_order, created_at) VALUES (?, ?, 0, ?, ?)',
-                [$taskId, $stTitle, $ord++, $now]
-            );
+        $subtasks = $input['subtasks'] ?? [];
+        if (is_string($subtasks)) {
+            $subtasks = array_filter(array_map('trim', preg_split('/\n+/', $subtasks) ?: []));
         }
-    }
+        if (is_array($subtasks)) {
+            $ord = 1;
+            foreach (array_slice($subtasks, 0, 12) as $st) {
+                $stTitle = clean_line(is_array($st) ? ($st['title'] ?? '') : $st, 255);
+                if ($stTitle === '') continue;
+                Database::insert(
+                    'INSERT INTO task_subtasks (task_id, title, is_done, sort_order, created_at) VALUES (?, ?, 0, ?, ?)',
+                    [$taskId, $stTitle, $ord++, $now]
+                );
+            }
+        }
 
-    log_activity($uid, 'create_task', 'task', $taskId, 'تسک «' . $title . '» ایجاد شد.');
-    create_notification($assignedTo, $uid, 'task_assigned', 'تسک جدید برای شما ثبت شد', 'تسک «' . $title . '» به شما محول شد. سررسید: ' . Jalali::toHuman($dueDate, true, true), 'task', $taskId);
-    return $taskId;
+        log_activity($uid, 'create_task', 'task', $taskId, 'تسک «' . $title . '» ایجاد شد.');
+        create_notification($assignedTo, $uid, 'task_assigned', 'تسک جدید برای شما ثبت شد', 'تسک «' . $title . '» به شما محول شد. سررسید: ' . Jalali::toHuman($dueDate, true, true), 'task', $taskId, true);
+        return $taskId;
+    });
 }
 function task_detail_payload(array $t): array
 {
@@ -485,12 +487,19 @@ try {
             if (isset($data['is_archived'])) { $sets[] = 'is_archived = ?'; $params[] = ((int) $data['is_archived'] === 1) ? 1 : 0; }
             if (empty($sets)) json_error('موردی برای ویرایش ارسال نشده است.');
             $sets[] = 'updated_at = ?'; $params[] = $now; $params[] = (int) $t['id'];
-            Database::execute('UPDATE tasks SET ' . implode(', ', $sets) . ' WHERE id = ?', $params);
-            log_activity($uid, 'update_task', 'task', (int) $t['id'], 'تسک «' . $t['title'] . '» ویرایش شد.');
-            if (isset($data['status']) && strtolower(clean_line($data['status'], 20)) === 'review') {
-                create_notification((int) $t['created_by'], $uid, 'task_review', 'تسک آماده بررسی است', 'تسک «' . $t['title'] . '» برای بررسی نهایی ارسال شد.', 'task', (int) $t['id']);
-            }
-            $fresh = fetch_task((int) $t['id']);
+            $fresh = Database::transaction(function () use ($sets, $params, $uid, $t, $data) {
+                Database::execute('UPDATE tasks SET ' . implode(', ', $sets) . ' WHERE id = ?', $params);
+                log_activity($uid, 'update_task', 'task', (int) $t['id'], 'تسک «' . $t['title'] . '» ویرایش شد.');
+                if (isset($data['status']) && strtolower(clean_line($data['status'], 20)) === 'review') {
+                    create_notification((int) $t['created_by'], $uid, 'task_review', 'تسک آماده بررسی است', 'تسک «' . $t['title'] . '» برای بررسی نهایی ارسال شد.', 'task', (int) $t['id'], true);
+                }
+                $fresh = fetch_task((int) $t['id']);
+                if ($fresh && (int) $fresh['assigned_to'] !== (int) $t['assigned_to']) {
+                    create_notification((int) $fresh['assigned_to'], $uid, 'task_assigned', 'تسک به شما واگذار شد',
+                        'تسک «' . $fresh['title'] . '» به شما محول شد.', 'task', (int) $t['id'], true);
+                }
+                return $fresh;
+            });
             json_success(['task' => task_detail_payload($fresh)], 'تسک به‌روزرسانی شد.');
             break;
         }
@@ -1025,10 +1034,21 @@ try {
             if ($title === '' || $body === '') json_error('عنوان و متن اطلاعیه الزامی است.');
             $prio = strtolower(clean_line($data['priority'] ?? 'normal', 20));
             if (!in_array($prio, ['normal', 'important', 'urgent'], true)) $prio = 'normal';
-            $id = Database::insert(
-                'INSERT INTO announcements (title, body, priority, department_id, is_pinned, created_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [$title, $body, $prio, !empty($data['department_id']) ? (int) $data['department_id'] : null, !empty($data['is_pinned']) ? 1 : 0, $uid, parse_date_input($data['expires_at'] ?? null), now_datetime()]
-            );
+            $id = Database::transaction(function () use ($data, $uid, $title, $body, $prio): int {
+                $id = Database::insert(
+                    'INSERT INTO announcements (title, body, priority, department_id, is_pinned, created_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$title, $body, $prio, !empty($data['department_id']) ? (int) $data['department_id'] : null, !empty($data['is_pinned']) ? 1 : 0, $uid, parse_date_input($data['expires_at'] ?? null), now_datetime()]
+                );
+                // همان محدوده‌ای که در فهرست اطلاعیه‌ها قابل مشاهده است.
+                $deptId = !empty($data['department_id']) ? (int) $data['department_id'] : null;
+                $recipients = $deptId === null
+                    ? Database::fetchAll('SELECT id FROM users WHERE is_active = 1 AND id <> ?', [$uid])
+                    : Database::fetchAll('SELECT id FROM users WHERE is_active = 1 AND department_id = ? AND id <> ?', [$deptId, $uid]);
+                foreach ($recipients as $recipient) {
+                    create_notification((int) $recipient['id'], $uid, 'announcement', 'اطلاعیه جدید', $title, 'announcement', $id, true);
+                }
+                return $id;
+            });
             log_activity($uid, 'announcement', 'announcement', $id, 'اطلاعیه «' . $title . '» منتشر شد.');
             json_success(['id' => $id], 'اطلاعیه منتشر شد.');
             break;
@@ -1143,6 +1163,14 @@ try {
             }
             unset($day);
             json_success(['calendar' => $matrix]);
+            break;
+        }
+
+        case 'live_reference': {
+            json_success([
+                'users' => Auth::assignableUsers(),
+                'projects' => Database::fetchAll("SELECT id, name FROM projects WHERE status = 'active' ORDER BY id ASC"),
+            ]);
             break;
         }
 
