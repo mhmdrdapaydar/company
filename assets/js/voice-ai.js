@@ -780,8 +780,10 @@
       document.getElementById('voicePreviewWrap').classList.remove('hidden');
       this.renderPreview();
       toast(res.message || 'پردازش انجام شد. پیش‌نمایش را بررسی کنید.', 'success');
-      if (document.getElementById('voiceAutoCreate').checked) {
+      if (document.getElementById('voiceAutoCreate').checked && !res.requires_review) {
         this.confirm();
+      } else if (res.requires_review) {
+        toast('این فرمان مبهم است؛ لطفاً پیش‌نمایش را بررسی و تأیید کنید.', 'info');
       }
       self.lastSpeechError = '';
     },

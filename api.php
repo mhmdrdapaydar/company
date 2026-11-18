@@ -675,6 +675,7 @@ try {
                 'provider' => $result['provider'],
                 'tasks' => $result['tasks'],
                 'notes' => $result['notes'] ?? [],
+                'requires_review' => !empty($result['requires_review']),
                 'voice_file' => $voiceFileName,
                 'voice_duration_sec' => $voiceDuration,
                 'voice_url' => $voiceFileName ? 'media.php?type=voice&file=' . rawurlencode($voiceFileName) : null,

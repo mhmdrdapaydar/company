@@ -348,11 +348,8 @@ final class PersianVoiceParser
         // ۱۰. تشخیص دسته‌بندی و برچسب‌های هوشمند
         [$category, $tags] = self::inferCategoryAndTags($title . ' ' . $text);
 
-        // اگر کاربر زیرتسک مستقیم نگفته بود، بر اساس دسته‌بندی زیرتسک هوشمند پیشنهاد بده
+        // پیشنهادها باید با درخواست کاربر ساخته شوند، نه به‌جای گفته‌های او.
         $subtasks = $subtasksResult['items'];
-        if (empty($subtasks)) {
-            $subtasks = self::suggestSubtasks($title, $category);
-        }
 
         $dueGreg   = $dateResult['gregorian'];
         $dueJalali = Jalali::toDateString($dueGreg, false);
