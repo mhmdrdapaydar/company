@@ -70,7 +70,7 @@ function parse_time_input(mixed $v): ?string
 {
     if ($v === null || $v === '') return null;
     $t = en_digits(trim((string) $v));
-    if (preg_match('/^(\d{1,2}):(\d{2})/', $t, $m)) {
+    if (preg_match('/^(\d{1,2}):(\d{2})(?::00)?$/', $t, $m)) {
         $h = (int) $m[1]; $mi = (int) $m[2];
         if ($h >= 0 && $h <= 23 && $mi >= 0 && $mi <= 59) return sprintf('%02d:%02d', $h, $mi);
     }
@@ -438,28 +438,43 @@ try {
             $t = get_task_or_fail((int) ($data['id'] ?? 0));
             $now = now_datetime();
             $sets = []; $params = [];
-            if (isset($data['title'])) { $sets[] = 'title = ?'; $params[] = clean_line($data['title'], 255); }
+            if (array_key_exists('title', $data)) {
+                $title = clean_line($data['title'], 255);
+                if ($title === '') json_error('عنوان تسک را وارد کنید.');
+                $sets[] = 'title = ?'; $params[] = $title;
+            }
             if (isset($data['description'])) { $sets[] = 'description = ?'; $params[] = clean_text($data['description'], 8000); }
             if (isset($data['status'])) {
                 $st = strtolower(clean_line($data['status'], 20));
                 if (in_array($st, ['todo', 'in_progress', 'review', 'done'], true)) {
                     $sets[] = 'status = ?'; $params[] = $st;
-                    if ($st === 'done') { $sets[] = 'completed_at = ?'; $params[] = $now; $sets[] = 'progress = 100'; }
-                    else { $sets[] = 'completed_at = NULL'; }
+                    if ($st === 'done') {
+                        if ($t['status'] !== 'done' || empty($t['completed_at'])) { $sets[] = 'completed_at = ?'; $params[] = $now; }
+                        $sets[] = 'progress = 100';
+                    } else { $sets[] = 'completed_at = NULL'; }
                 }
             }
             if (isset($data['priority'])) {
                 $pr = strtolower(clean_line($data['priority'], 20));
                 if (in_array($pr, ['low', 'medium', 'high', 'urgent'], true)) { $sets[] = 'priority = ?'; $params[] = $pr; }
             }
-            if (isset($data['progress'])) { $sets[] = 'progress = ?'; $params[] = max(0, min(100, (int) $data['progress'])); }
+            if (isset($data['progress'])) {
+                $requestedStatus = strtolower(clean_line($data['status'] ?? $t['status'], 20));
+                if (!in_array($requestedStatus, ['todo', 'in_progress', 'review', 'done'], true)) $requestedStatus = (string) $t['status'];
+                if ($requestedStatus !== 'done') { $sets[] = 'progress = ?'; $params[] = max(0, min(100, (int) $data['progress'])); }
+                elseif (!isset($data['status'])) { $sets[] = 'progress = 100'; }
+            }
             if (array_key_exists('project_id', $data)) {
                 $pid = (int) $data['project_id'];
                 $sets[] = 'project_id = ?'; $params[] = $pid > 0 ? $pid : null;
             }
             if (array_key_exists('assigned_to', $data)) {
                 $at = (int) $data['assigned_to'];
-                if ($at > 0 && Auth::canAssignTo($at)) { $sets[] = 'assigned_to = ?'; $params[] = $at; }
+                if ($at !== (int) $t['assigned_to']) {
+                    if ($at <= 0 || !Auth::canAssignTo($at)) json_error('مجاز به واگذاری تسک به این کارمند نیستید.', 403);
+                    if (!Database::fetchOne('SELECT id FROM users WHERE id = ? AND is_active = 1', [$at])) json_error('کارمند مسئول تسک یافت نشد یا غیرفعال است.');
+                }
+                $sets[] = 'assigned_to = ?'; $params[] = $at;
             }
             if (array_key_exists('start_date', $data)) {
                 $sd = parse_date_input($data['start_date']);
@@ -490,7 +505,7 @@ try {
             $fresh = Database::transaction(function () use ($sets, $params, $uid, $t, $data) {
                 Database::execute('UPDATE tasks SET ' . implode(', ', $sets) . ' WHERE id = ?', $params);
                 log_activity($uid, 'update_task', 'task', (int) $t['id'], 'تسک «' . $t['title'] . '» ویرایش شد.');
-                if (isset($data['status']) && strtolower(clean_line($data['status'], 20)) === 'review') {
+                if (isset($data['status']) && strtolower(clean_line($data['status'], 20)) === 'review' && $t['status'] !== 'review') {
                     create_notification((int) $t['created_by'], $uid, 'task_review', 'تسک آماده بررسی است', 'تسک «' . $t['title'] . '» برای بررسی نهایی ارسال شد.', 'task', (int) $t['id'], true);
                 }
                 $fresh = fetch_task((int) $t['id']);
@@ -542,7 +557,7 @@ try {
             $subs = Database::fetchAll('SELECT is_done FROM task_subtasks WHERE task_id = ?', [(int) $t['id']]);
             if (!empty($subs)) {
                 $done = count(array_filter($subs, fn($s) => (int) $s['is_done'] === 1));
-                $pct = (int) round(($done / count($subs)) * 100);
+                $pct = $t['status'] === 'done' ? 100 : (int) round(($done / count($subs)) * 100);
                 Database::execute('UPDATE tasks SET progress = ?, updated_at = ? WHERE id = ?', [$pct, now_datetime(), (int) $t['id']]);
             }
             json_success(['is_done' => $newDone], $newDone ? 'زیرتسک انجام شد ✅' : 'زیرتسک به حالت انجام‌نشده برگشت.');

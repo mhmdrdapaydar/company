@@ -378,15 +378,20 @@
   }
 
   var searchTimer = null;
+  var taskRequestVersion = 0;
   function loadTasks(silent) {
     silent = silent === true;
+    var version = ++taskRequestVersion;
+    var query = taskQuery();
+    var queryKey = JSON.stringify(query);
     if (!silent) $('#tasksListView').innerHTML = '<div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div>';
-    api('tasks_list', taskQuery()).then(function (res) {
+    api('tasks_list', query).then(function (res) {
+      if (version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
       if (silent && (!canRefreshLive() || state.section !== 'tasks')) return;
       state.tasks = res.tasks || [];
       renderTasks();
     }).catch(function (err) {
-      if (silent) return;
+      if (silent || version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
       $('#tasksListView').innerHTML = emptyState('⚠️', err.message);
       toast(err.message, 'error');
     });
