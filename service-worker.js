@@ -12,6 +12,13 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || event.request.mode !== 'navigate') return;
   event.respondWith(fetch(event.request).catch(() => caches.match('./offline.html')));
 });
+self.addEventListener('push', event => {
+  let id = 0;
+  try { const payload = event.data ? event.data.json() : {}; id = Number(payload.id) || 0; } catch (e) {}
+  const options = { body: 'اعلان تازه‌ای در همکار پلاس دارید.', icon: './assets/icons/app-192.png' };
+  if (id > 0 && Number.isSafeInteger(id)) options.tag = 'hamkar-' + id;
+  event.waitUntil(self.registration.showNotification('اعلان جدید', options));
+});
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   event.waitUntil(self.clients.matchAll({type:'window', includeUncontrolled:true}).then(clients => {

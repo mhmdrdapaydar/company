@@ -1,0 +1,7 @@
+{
+  "name": "hamkar-plus-push-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Optional Web Push delivery worker for Hamkar Plus",
+  "dependencies": { "web-push": "3.6.7" }
+}

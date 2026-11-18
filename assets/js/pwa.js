@@ -15,6 +15,48 @@
   function message(text, type) {
     if (window.App && window.App.toast) window.App.toast(text, type || 'info', 8000);
   }
+  var pushActive = false;
+  var pushConfig = null;
+  function requestJson(action, payload) {
+    var options = { credentials:'same-origin', headers:{'Accept':'application/json'} };
+    if (payload) {
+      options.method = 'POST';
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['X-CSRF-Token'] = window.APP.csrf;
+      options.body = JSON.stringify(Object.assign({csrf_token:window.APP.csrf}, payload));
+    }
+    return fetch('api.php?action=' + encodeURIComponent(action), options).then(function (response) {
+      return response.json().then(function (data) {
+        if (!response.ok || !data.ok) throw new Error(data.message || 'خطای ثبت اعلان');
+        return data;
+      });
+    });
+  }
+  function applicationKey(key) {
+    var base64 = key.replace(/-/g, '+').replace(/_/g, '/');
+    base64 += '='.repeat((4 - base64.length % 4) % 4);
+    var raw = atob(base64), bytes = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+  function enableBackgroundPush() {
+    if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || window.Notification.permission !== 'granted') return Promise.resolve(false);
+    return requestJson('push_config').then(function (config) {
+      pushConfig = config;
+      if (!config.enabled || !config.public_key) return false;
+      return navigator.serviceWorker.ready.then(function (registration) {
+        return registration.pushManager.getSubscription().then(function (subscription) {
+          if (subscription) return subscription;
+          return registration.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:applicationKey(config.public_key) });
+        });
+      }).then(function (subscription) {
+        return requestJson('push_subscribe', { subscription:subscription.toJSON() }).then(function () { pushActive = true; return true; });
+      });
+    });
+  }
+  function pushResult(active) {
+    message(active ? 'اعلان دستگاه و پس‌زمینه برای این مرورگر ثبت شد.' : 'اعلان دستگاه فعال است؛ پوش پس‌زمینه در سرور پیکربندی نشده یا پشتیبانی نمی‌شود. برنامه باید باز بماند.');
+  }
   document.addEventListener('DOMContentLoaded', function () {
     var install = document.getElementById('btnInstallApp');
     if (install) install.addEventListener('click', function (event) {
@@ -66,7 +108,7 @@
       }
       if (window.Notification.permission === 'granted') {
         refreshPermissionNotice();
-        message('اعلان دستگاه فعال است؛ برای دریافت آن، برنامه باید باز بماند.'); return;
+        enableBackgroundPush().then(pushResult).catch(function () { message('ثبت اعلان پس‌زمینه ناموفق بود؛ اعلان داخل برنامه همچنان فعال است.', 'error'); }); return;
       }
       if (window.Notification.permission === 'denied') {
         refreshPermissionNotice();
@@ -78,7 +120,8 @@
       try {
         // Browsers require this call directly from a user gesture.
         Promise.resolve(window.Notification.requestPermission()).then(function (permission) {
-          message(permission === 'granted' ? 'اعلان دستگاه فعال شد؛ برنامه باید باز بماند.' : 'اجازهٔ اعلان دستگاه داده نشد.', permission === 'granted' ? 'info' : 'error');
+          if (permission === 'granted') return enableBackgroundPush().then(pushResult);
+          message('اجازهٔ اعلان دستگاه داده نشد.', 'error');
         }).catch(function () {
           message('فعال‌سازی اعلان ممکن نشد.', 'error');
         }).then(function () {
@@ -94,6 +137,19 @@
     if (button) button.addEventListener('click', requestNotifications);
     if (noticeButton) noticeButton.addEventListener('click', requestNotifications);
     refreshPermissionNotice();
+    if (window.isSecureContext && 'Notification' in window && window.Notification.permission === 'granted') enableBackgroundPush().catch(function () {});
+    var logout = document.querySelector('a[href="logout.php"]');
+    if (logout) logout.addEventListener('click', function (event) {
+      if (!pushActive || !('serviceWorker' in navigator)) return;
+      event.preventDefault();
+      var destination = logout.href;
+      navigator.serviceWorker.ready.then(function (registration) {
+        return registration.pushManager.getSubscription();
+      }).then(function (subscription) {
+        if (!subscription) return;
+        return requestJson('push_unsubscribe', {endpoint:subscription.endpoint}).catch(function () {}).then(function () { return subscription.unsubscribe(); });
+      }).catch(function () {}).then(function () { window.location.href = destination; });
+    });
     window.addEventListener('focus', refreshPermissionNotice);
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) refreshPermissionNotice();

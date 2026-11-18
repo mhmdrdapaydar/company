@@ -5,6 +5,24 @@ require_once __DIR__ . '/includes/bootstrap.php';
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
+// Dedicated queue worker: authenticated separately, never via a browser session.
+$workerAction = strtolower(clean_line($_GET['action'] ?? '', 60));
+if (in_array($workerAction, ['push_claim', 'push_ack'], true)) {
+    if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') json_error('Method not allowed.', 405);
+    $authorization = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? '');
+    $token = str_starts_with($authorization, 'Bearer ') ? substr($authorization, 7) : '';
+    if (!PushService::verifyWorker($token)) json_error('Unauthorized.', 401);
+    try {
+        $workerData = request_data();
+        if ($workerAction === 'push_claim') json_success(['job' => PushService::claim()]);
+        PushService::acknowledge((int) ($workerData['id'] ?? 0), (string) ($workerData['lease'] ?? ''), (string) ($workerData['result'] ?? ''));
+        json_success();
+    } catch (Throwable $e) {
+        error_log('Push worker error: ' . $e->getMessage());
+        json_error('Queue operation failed.', 400);
+    }
+}
+
 $user = Auth::user();
 if (!$user) {
     json_error('نشست شما منقضی شده است. لطفاً دوباره وارد شوید.', 401);
@@ -1082,6 +1100,26 @@ try {
             Database::execute('DELETE FROM announcements WHERE id = ?', [$id]);
             log_activity($uid, 'delete_announcement', 'announcement', $id, 'اطلاعیه حذف شد.');
             json_success([], 'اطلاعیه حذف شد.');
+            break;
+        }
+
+        case 'push_config': {
+            json_success(['enabled' => PushService::enabled(), 'public_key' => PushService::enabled() ? PushService::publicKey() : null]);
+            break;
+        }
+        case 'push_subscribe': {
+            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            $subscription = $data['subscription'] ?? null;
+            if (!is_array($subscription)) json_error('اشتراک اعلان نامعتبر است.');
+            PushService::subscribe($uid, $subscription);
+            json_success([], 'اعلان پس‌زمینه برای این دستگاه فعال شد.');
+            break;
+        }
+        case 'push_unsubscribe': {
+            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            $endpoint = is_string($data['endpoint'] ?? null) ? $data['endpoint'] : '';
+            PushService::unsubscribe($uid, $endpoint);
+            json_success();
             break;
         }
 

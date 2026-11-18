@@ -22,6 +22,8 @@ final class Schema
         'leave_requests',
         'announcements',
         'notifications',
+        'push_subscriptions',
+        'push_jobs',
         'activity_logs',
     ];
 
@@ -312,6 +314,34 @@ final class Schema
                 CONSTRAINT `fk_notif_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
             ) {$tableOpts}",
 
+            // اشتراک‌های پوش و صف تحویل؛ هیچ کلید خصوصی VAPID در دیتابیس ذخیره نمی‌شود.
+            "CREATE TABLE IF NOT EXISTS `push_subscriptions` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `user_id` INT UNSIGNED NOT NULL,
+                `endpoint_hash` CHAR(64) NOT NULL,
+                `endpoint` TEXT NOT NULL,
+                `p256dh` VARCHAR(255) NOT NULL,
+                `auth_secret` VARCHAR(255) NOT NULL,
+                `created_at` DATETIME NOT NULL,
+                `updated_at` DATETIME NOT NULL,
+                PRIMARY KEY (`id`), UNIQUE KEY `uq_push_endpoint` (`endpoint_hash`),
+                KEY `idx_push_user` (`user_id`),
+                CONSTRAINT `fk_push_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) {$tableOpts}",
+            "CREATE TABLE IF NOT EXISTS `push_jobs` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `notification_id` INT UNSIGNED NOT NULL,
+                `subscription_id` INT UNSIGNED NOT NULL,
+                `attempts` INT NOT NULL DEFAULT 0,
+                `available_at` DATETIME NOT NULL,
+                `lease_token` VARCHAR(64) NULL,
+                `created_at` DATETIME NOT NULL,
+                PRIMARY KEY (`id`), UNIQUE KEY `uq_push_job` (`notification_id`, `subscription_id`),
+                KEY `idx_push_available` (`available_at`),
+                CONSTRAINT `fk_push_job_notif` FOREIGN KEY (`notification_id`) REFERENCES `notifications` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_push_job_subscription` FOREIGN KEY (`subscription_id`) REFERENCES `push_subscriptions` (`id`) ON DELETE CASCADE
+            ) {$tableOpts}",
+
             // ۱۴. گزارش کامل فعالیت‌ها و تاریخچه سامانه
             "CREATE TABLE IF NOT EXISTS `activity_logs` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -521,6 +551,28 @@ final class Schema
                 is_read INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             )",
+
+            "CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                endpoint_hash TEXT NOT NULL UNIQUE,
+                endpoint TEXT NOT NULL,
+                p256dh TEXT NOT NULL,
+                auth_secret TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            "CREATE TABLE IF NOT EXISTS push_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+                subscription_id INTEGER NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                available_at TEXT NOT NULL,
+                lease_token TEXT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(notification_id, subscription_id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_push_available ON push_jobs(available_at)",
 
             "CREATE TABLE IF NOT EXISTS activity_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

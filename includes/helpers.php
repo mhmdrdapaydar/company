@@ -435,7 +435,7 @@ function create_notification(
         return;
     }
     try {
-        Database::execute(
+        $notificationId = Database::insert(
             'INSERT INTO notifications (user_id, actor_id, type, title, message, entity_type, entity_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)',
             [
                 $userId,
@@ -448,6 +448,7 @@ function create_notification(
                 now_datetime(),
             ]
         );
+        try { PushService::enqueue($notificationId, $userId); } catch (Throwable $pushError) { error_log('Push queue error: ' . $pushError->getMessage()); }
     } catch (Throwable $e) {
         error_log('Notification insert failed: ' . $e->getMessage());
         if ($required) throw $e;
