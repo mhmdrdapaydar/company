@@ -29,16 +29,80 @@
       message('در مرورگر، گزینهٔ نصب برنامه یا افزودن به صفحهٔ اصلی را انتخاب کنید. در آیفون: اشتراک‌گذاری ← افزودن به صفحهٔ اصلی. نصب به HTTPS نیاز دارد.');
     });
     var button = document.getElementById('btnDesktopNotifications');
-    if (button) button.addEventListener('click', function (event) {
-      event.preventDefault();
-      if (!window.isSecureContext || !('Notification' in window)) {
-        message('اعلان دستگاه در این مرورگر در دسترس نیست؛ اتصال HTTPS و تنظیمات مرورگر را بررسی کنید.', 'error'); return;
+    var notice = document.getElementById('notificationPermissionNotice');
+    var noticeButton = document.getElementById('btnRequestNotificationPermission');
+    var title = document.getElementById('notificationPermissionTitle');
+    var description = document.getElementById('notificationPermissionDescription');
+    var requesting = false;
+
+    function refreshPermissionNotice() {
+      if (!notice || !noticeButton || !title || !description) return;
+      var available = !!window.isSecureContext && 'Notification' in window;
+      var permission = available ? window.Notification.permission : 'unsupported';
+      notice.classList.toggle('hidden', permission === 'granted');
+      noticeButton.disabled = requesting;
+      if (permission === 'default') {
+        title.textContent = '🔔 اعلان دستگاه را فعال کنید';
+        description.textContent = 'برای دریافت اعلان تسک‌ها و پیام‌های جدید، اجازهٔ مرورگر را بدهید. برنامه باید باز بماند.';
+        noticeButton.textContent = 'فعال‌سازی اعلان';
+        noticeButton.classList.remove('hidden');
+      } else if (permission === 'denied') {
+        title.textContent = '🔕 اجازهٔ اعلان مسدود است';
+        description.textContent = 'در تنظیمات مرورگر یا دستگاه، اعلان‌های این سایت را مجاز کنید. اعلان‌های داخل برنامه همچنان در دسترس‌اند.';
+        noticeButton.textContent = 'راهنمای فعال‌سازی';
+        noticeButton.classList.remove('hidden');
+      } else if (permission === 'unsupported') {
+        title.textContent = '🔔 اعلان دستگاه در دسترس نیست';
+        description.textContent = 'اتصال امن HTTPS و پشتیبانی مرورگر را بررسی کنید. در آیفون ممکن است نیاز باشد ابتدا برنامه را به صفحهٔ اصلی اضافه و از آنجا باز کنید. اعلان‌های داخل برنامه همچنان در دسترس‌اند.';
+        noticeButton.classList.add('hidden');
       }
-      if (Notification.permission === 'granted') { message('اعلان دستگاه فعال است؛ برای دریافت آن، برنامه باید باز بماند.'); return; }
-      if (Notification.permission === 'denied') { message('اجازهٔ اعلان مسدود است؛ آن را در تنظیمات مرورگر فعال کنید.', 'error'); return; }
-      Notification.requestPermission().then(function (permission) {
-        message(permission === 'granted' ? 'اعلان دستگاه فعال شد؛ برنامه باید باز بماند.' : 'اجازهٔ اعلان دستگاه داده نشد.', permission === 'granted' ? 'info' : 'error');
-      }).catch(function () { message('فعال‌سازی اعلان ممکن نشد.', 'error'); });
+    }
+
+    function requestNotifications(event) {
+      if (event) event.preventDefault();
+      if (!window.isSecureContext || !('Notification' in window)) {
+        refreshPermissionNotice();
+        message('اعلان دستگاه در دسترس نیست؛ اتصال HTTPS و تنظیمات مرورگر را بررسی کنید.', 'error'); return;
+      }
+      if (window.Notification.permission === 'granted') {
+        refreshPermissionNotice();
+        message('اعلان دستگاه فعال است؛ برای دریافت آن، برنامه باید باز بماند.'); return;
+      }
+      if (window.Notification.permission === 'denied') {
+        refreshPermissionNotice();
+        message('در تنظیمات مرورگر یا دستگاه، مجوز اعلان این سایت را فعال کنید.', 'error'); return;
+      }
+      if (requesting) return;
+      requesting = true;
+      refreshPermissionNotice();
+      try {
+        // Browsers require this call directly from a user gesture.
+        Promise.resolve(window.Notification.requestPermission()).then(function (permission) {
+          message(permission === 'granted' ? 'اعلان دستگاه فعال شد؛ برنامه باید باز بماند.' : 'اجازهٔ اعلان دستگاه داده نشد.', permission === 'granted' ? 'info' : 'error');
+        }).catch(function () {
+          message('فعال‌سازی اعلان ممکن نشد.', 'error');
+        }).then(function () {
+          requesting = false;
+          refreshPermissionNotice();
+        });
+      } catch (e) {
+        requesting = false;
+        refreshPermissionNotice();
+        message('فعال‌سازی اعلان ممکن نشد.', 'error');
+      }
+    }
+    if (button) button.addEventListener('click', requestNotifications);
+    if (noticeButton) noticeButton.addEventListener('click', requestNotifications);
+    refreshPermissionNotice();
+    window.addEventListener('focus', refreshPermissionNotice);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshPermissionNotice();
     });
+    if (navigator.permissions && navigator.permissions.query && window.isSecureContext && 'Notification' in window) {
+      navigator.permissions.query({name:'notifications'}).then(function (status) {
+        status.addEventListener('change', refreshPermissionNotice);
+      }).catch(function () {});
+    }
+
   });
 })();

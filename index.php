@@ -109,6 +109,13 @@ $theme       = 'light';
     </header>
 
     <main class="content">
+      <div id="notificationPermissionNotice" class="alert alert-info permission-notice hidden" role="status" aria-live="polite">
+        <div class="permission-notice-text">
+          <strong id="notificationPermissionTitle">🔔 فعال‌سازی اعلان دستگاه</strong>
+          <div id="notificationPermissionDescription" class="small"></div>
+        </div>
+        <button type="button" id="btnRequestNotificationPermission" class="btn btn-primary btn-sm">فعال‌سازی اعلان</button>
+      </div>
 
       <!-- ================= داشبورد ================= -->
       <section class="section active" id="section-dashboard">

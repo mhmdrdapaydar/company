@@ -1,0 +1,17 @@
+// NODE_PATH=/path/to/node_modules BASE_URL=... TEST_USER=... TEST_PASSWORD=... node tests/notification_permission_ui_test.js
+const {JSDOM}=require('jsdom'),fs=require('node:fs'),assert=require('node:assert/strict');
+const base=process.env.BASE_URL, user=process.env.TEST_USER, password=process.env.TEST_PASSWORD;
+if(!base||!user||!password)throw Error('Set BASE_URL TEST_USER TEST_PASSWORD');
+let cookies={};async function request(p,o={}){const r=await fetch(base+p,{redirect:'manual',...o,headers:{...o.headers,cookie:Object.entries(cookies).map(([k,v])=>k+'='+v).join('; ')}});for(const c of r.headers.getSetCookie()){const [k,...v]=c.split(';')[0].split('=');cookies[k]=v.join('=')}return r.text()}
+const wait=()=>new Promise(r=>setTimeout(r,20));
+(async()=>{
+ const login=await request('/login.php');const csrf=login.match(/name="csrf_token" value="([^"]+)"/)[1];await request('/login.php',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({username:user,password,csrf_token:csrf}).toString()});
+ const page=(await request('/')).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
+ async function setup(permission,secure=true,supported=true){let dom=new JSDOM(page,{url:base+'/',runScripts:'outside-only'}),w=dom.window,count=0;Object.defineProperty(w,'isSecureContext',{value:secure});if(supported){w.Notification=function(){};w.Notification.permission=permission;w.Notification.requestPermission=()=>{count++;w.Notification.permission='granted';return Promise.resolve('granted')}}w.App={toast(){}};w.eval(fs.readFileSync('assets/js/pwa.js','utf8'));await wait();return {dom,w,count:()=>count}}
+ let t=await setup('default');let n=t.w.document.getElementById('notificationPermissionNotice'),b=t.w.document.getElementById('btnRequestNotificationPermission');assert(!n.classList.contains('hidden'));assert.equal(t.count(),0,'permission must not be requested without gesture');assert.match(n.textContent,/برنامه باید باز بماند/);b.click();assert.equal(t.count(),1,'explicit click requests permission');await wait();assert(n.classList.contains('hidden'),'granted hides prompt');t.dom.window.close();
+ t=await setup('denied');n=t.w.document.getElementById('notificationPermissionNotice');b=t.w.document.getElementById('btnRequestNotificationPermission');assert(!n.classList.contains('hidden'));assert.match(n.textContent,/تنظیمات مرورگر/);b.click();assert.equal(t.count(),0,'denied permission must be changed in settings');t.w.Notification.permission='granted';t.w.dispatchEvent(new t.w.Event('focus'));assert(n.classList.contains('hidden'),'focus rechecks settings');t.dom.window.close();
+ t=await setup('granted');assert(t.w.document.getElementById('notificationPermissionNotice').classList.contains('hidden'));assert.equal(t.count(),0);t.dom.window.close();
+ t=await setup('default',false);n=t.w.document.getElementById('notificationPermissionNotice');assert(!n.classList.contains('hidden'));assert.match(n.textContent,/HTTPS/);assert(t.w.document.getElementById('btnRequestNotificationPermission').classList.contains('hidden'));t.dom.window.close();
+ t=await setup('',true,false);n=t.w.document.getElementById('notificationPermissionNotice');assert(!n.classList.contains('hidden'));assert.match(n.textContent,/آیفون/);t.dom.window.close();
+ console.log('Permission notice: default, consent gesture, granted, denied, settings change and unsupported: OK');
+})().catch(e=>{console.error(e);process.exitCode=1});

@@ -633,3 +633,9 @@ pre,code{overflow-wrap:anywhere}
   .ai-preview-card .field>span{font-size:11.5px;margin-bottom:4px;line-height:1.5}
   .ai-preview-card .form-row{gap:9px}
 }
+
+/* درخواست شفاف و قابل استفاده روی تلفن و رایانه */
+.permission-notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.permission-notice-text{flex:1;min-width:min(100%,240px);line-height:1.8}
+.permission-notice .btn{flex-shrink:0}
+@media(max-width:600px){.permission-notice .btn{width:100%}}
