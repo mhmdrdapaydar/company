@@ -64,7 +64,7 @@ $theme       = 'light';
       <a href="#departments" data-section="departments"><span>🏢</span> واحدهای سازمانی</a>
       <?php endif; ?>
       <a href="#announcements" data-section="announcements"><span>📢</span> اطلاعیه‌ها</a>
-      <a href="#notifications" data-section="notifications"><span>🔔</span> اعلان‌ها<?php if ($unread > 0): ?><span class="nav-badge"><?= e(fa_digits($unread)) ?></span><?php endif; ?></a>
+      <a href="#notifications" data-section="notifications"><span>🔔</span> اعلان‌ها<span id="notifNavBadge" class="nav-badge"<?= $unread > 0 ? '' : ' style="display:none"' ?>><?= e(fa_digits($unread)) ?></span></a>
       <?php if ($isManager): ?>
       <a href="#activity" data-section="activity"><span>📝</span> گزارش فعالیت‌ها</a>
       <?php endif; ?>

@@ -1144,7 +1144,9 @@
 
   /* ================= اعلان‌ها ================= */
   function loadNotifications() {
+    var version = notifVersion;
     api('notifications_list').then(function (res) {
+      if (version !== notifVersion || notifPending) return;
       var wrap = $('#notificationsList');
       if (!res.notifications.length) { wrap.innerHTML = emptyState('🔔', 'اعلانی ندارید.'); return; }
       wrap.innerHTML = res.notifications.map(function (n) {
@@ -1155,24 +1157,47 @@
       }).join('');
       $$('#notificationsList .notif-item').forEach(function (item) {
         item.addEventListener('click', function () {
-          var wasUnread = this.classList.contains('unread');
-          // ✅ فوری: بصری خوانده شود، بعد به سرور بگو
-          this.classList.remove('unread');
-          var ic = this.querySelector('span');
-          if (ic && ic.textContent === '📬') ic.textContent = '📭';
-          if (wasUnread) setNotifBadge(state.unreadNotifs - 1);
-          markNotification(Number(this.getAttribute('data-notif')));
+          markNotification(Number(this.getAttribute('data-notif')), this.classList.contains('unread'));
           var type = this.getAttribute('data-notif-type');
           var rel = this.getAttribute('data-notif-rel');
           if (type === 'task' && rel) { go('tasks'); openTask(Number(rel)); }
+          else if (type === 'announcement') { go('announcements'); }
         });
       });
     }).catch(function (err) { $('#notificationsList').innerHTML = emptyState('⚠️', err.message); });
   }
-  function markNotification(id) {
-    api('notification_read', { id: id }).then(refreshNotifCount).catch(function () {});
+  // تغییر فوری و سپس همگام‌سازی با سرور؛ خطا باعث بازگرداندن وضعیت واقعی می‌شود.
+  function markNotification(id, wasUnread) {
+    if (notifPendingIds[id]) return;
+    notifPendingIds[id] = true;
+    notifPending++;
+    notifVersion++;
+    var item = document.querySelector('#notificationsList [data-notif="' + id + '"]');
+    if (item) {
+      wasUnread = item.classList.contains('unread');
+    }
+    if (item && wasUnread) {
+      item.classList.remove('unread');
+      var icon = item.querySelector('span');
+      if (icon) icon.textContent = '📭';
+    }
+    if (wasUnread) setNotifBadge(state.unreadNotifs - 1);
+    api('notification_read', { id: id }).catch(function (err) {
+      toast(err.message || 'خواندن اعلان ثبت نشد.', 'error');
+    }).then(function () {
+      delete notifPendingIds[id];
+      notifPending--;
+      notifVersion++;
+      if (!notifPending) {
+        refreshNotifCount();
+        if (state.section === 'notifications') loadNotifications();
+      }
+    });
   }
   /* ---------------- اعلان‌های زنده ---------------- */
+  var notifVersion = 0;
+  var notifPending = 0;
+  var notifPendingIds = {};
   var notifTimer = null;       // شناسهٔ تایمر نظرسنجی
   var notifSeenLastId = 0;     // بزرگ‌ترین شناسهٔ دیده‌شده (برای تشخیص اعلان تازه)
   var notifBooting = true;     // اولین بار نباید برای اعلان‌های قدیمی نوتیف بدهد
@@ -1183,9 +1208,9 @@
     unread = Math.max(0, Number(unread) || 0);
     state.unreadNotifs = unread;
     var dot = $('#notifDot');
-    if (!dot) return;
-    dot.textContent = FAT(unread);
-    dot.style.display = unread > 0 ? '' : 'none';
+    if (dot) { dot.textContent = FAT(unread); dot.style.display = unread > 0 ? '' : 'none'; }
+    var nav = $('#notifNavBadge');
+    if (nav) { nav.textContent = FAT(unread); nav.style.display = unread > 0 ? '' : 'none'; }
     // برای دسترس‌پذیری
     var bell = $('#btnNotifBell');
     if (bell) bell.setAttribute('aria-label', unread > 0 ? FAT(unread) + ' اعلان خوانده‌نشده' : 'اعلان‌ها');
@@ -1222,9 +1247,10 @@
       if (e.target.classList.contains('notif-pop-close')) { dismiss(); return; }
       var type = n.entity_type || n.related_type || '';
       var rel = n.entity_id || n.related_id || '';
+      markNotification(n.id, !n.is_read);
       if (type === 'task' && rel) { go('tasks'); openTask(Number(rel)); }
+      else if (type === 'announcement') { go('announcements'); }
       else { go('notifications'); }
-      markNotification(n.id);
       dismiss();
     });
     var hideTimer = setTimeout(dismiss, 9000);
@@ -1241,18 +1267,25 @@
    * کارت گوشهٔ صفحه نشان می‌دهد.
    */
   function pollNotifications() {
-    if (document.hidden) return;            // در تب پنهان درخواست نفرست
+    if (document.hidden || notifPending) return;
+    var version = notifVersion;
     api('notifications_unread').then(function (res) {
+      if (version !== notifVersion || notifPending) return;
       var unread = Number(res.unread || 0);
       var lastId = Number(res.last_id || 0);
       setNotifBadge(unread);
 
       var isNew = lastId > notifSeenLastId;
-      notifSeenLastId = Math.max(notifSeenLastId, lastId);
-      if (!isNew || notifBooting) { notifBooting = false; return; }
+      if (!isNew || notifBooting) {
+        notifSeenLastId = Math.max(notifSeenLastId, lastId);
+        notifBooting = false;
+        return;
+      }
 
       // اعلان تازه داریم: جزئیاتش را بگیر و نمایش بده
       api('notifications_list').then(function (list) {
+        if (version !== notifVersion || notifPending) return;
+        notifSeenLastId = Math.max(notifSeenLastId, lastId);
         var fresh = (list.notifications || []).filter(function (x) {
           return !notifSeenIds[x.id] && !x.is_read;
         });
@@ -1261,7 +1294,6 @@
         (list.notifications || []).forEach(function (x) { notifSeenIds[x.id] = 1; });
         // فقط ۳ مورد آخر را نوتیف کن (نه سیل کارت)
         fresh.sort(function (a, b) { return a.id - b.id; }).slice(-3).forEach(showNotifPopup);
-        setNotifBadge(unread);
         // اگر صفحهٔ اعلان‌ها باز است، فهرست را هم تازه کن
         if (state.section === 'notifications') loadNotifications();
       }).catch(function () {});
@@ -1270,10 +1302,10 @@
 
   /** همگام‌سازی فوری نشانگر با سرور (پس از هر تغییر) */
   function refreshNotifCount() {
+    if (notifPending) return;
+    var version = notifVersion;
     api('notifications_unread').then(function (res) {
-      setNotifBadge(Number(res.unread || 0));
-      var lastId = Number(res.last_id || 0);
-      if (lastId > notifSeenLastId) notifSeenLastId = lastId;
+      if (version === notifVersion && !notifPending) setNotifBadge(Number(res.unread || 0));
     }).catch(function () {});
   }
 
@@ -1530,6 +1562,8 @@
     $('#btnNewAnnouncement') && $('#btnNewAnnouncement').addEventListener('click', announcementModal);
     $('#btnReadAll').addEventListener('click', function () {
       var btn = this;
+      notifPending++;
+      notifVersion++;
       // ✅ تغییر فوری در رابط: قبل از پاسخ سرور، همه را «خوانده» نشان بده
       var items = $$('#notificationsList .notif-item');
       items.forEach(function (it) {
@@ -1541,13 +1575,17 @@
       btn.disabled = true;
       api('notifications_read_all').then(function (r) {
         toast(r.message || 'همه اعلان‌ها خوانده شد.');
-        refreshNotifCount();
-        loadNotifications();
       }).catch(function (e) {
         toast(e.message, 'error');
-        loadNotifications();
-        refreshNotifCount();
-      }).then(function () { btn.disabled = false; });
+      }).then(function () {
+        notifPending--;
+        notifVersion++;
+        btn.disabled = false;
+        if (!notifPending) {
+          refreshNotifCount();
+          if (state.section === 'notifications') loadNotifications();
+        }
+      });
     });
     $('#btnReloadActivity') && $('#btnReloadActivity').addEventListener('click', loadActivity);
     $('#empSearch') && $('#empSearch').addEventListener('input', renderEmployees);
@@ -1598,7 +1636,6 @@
       notifSeenIds = {};
       (res.notifications || []).forEach(function (x) { notifSeenIds[x.id] = 1; });
       notifSeenLastId = (res.notifications || []).reduce(function (m, x) { return Math.max(m, Number(x.id) || 0); }, 0);
-      setNotifBadge((res.notifications || []).filter(function (x) { return !x.is_read; }).length);
       initNotifPolling();
     }).catch(function () { initNotifPolling(); });
   });
