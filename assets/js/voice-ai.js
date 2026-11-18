@@ -773,7 +773,8 @@
       document.getElementById('voiceTranscript').value = this.previewMeta.transcript;
       document.getElementById('voiceProvider').textContent = '🤖 ' + this.previewMeta.provider;
       var hint = document.getElementById('speechHint');
-      if (hint) hint.textContent = this.browserSpeechGotResult
+      if (hint && res.notes && res.notes.length) hint.textContent = res.notes.join('\n');
+      else if (hint) hint.textContent = this.browserSpeechGotResult
         ? '🎧 تشخیص گفتار مرورگر فعال است؛ متن هم‌زمان با صحبت شما نوشته می‌شود.'
         : 'ℹ️ صدا در سرور پردازش شد. برای دقت بیشتر روی صداهای طولانی، کلید رایگان Groq را در تنظیمات وارد کنید.';
       document.getElementById('voicePreviewWrap').classList.remove('hidden');

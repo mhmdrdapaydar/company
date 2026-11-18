@@ -59,6 +59,26 @@ final class AiService
         return self::$intlReachable;
     }
 
+    /** فرمان ایجاد پروژه در دستیار تسک پشتیبانی نمی‌شود؛ تسک جعلی نسازید. */
+    private static function rejectProjectCreation(string $transcript): void
+    {
+        $text = normalize_persian($transcript);
+        if (!preg_match('/(?:تسک|وظیفه)/u', $text)
+            && preg_match('/(?:پروژه\s+(?:جدید\s+)?(?:تعیین|تعین|تایین|ثبت|ایجاد|بساز|بذار|بزار)|(?:ایجاد|ثبت|ساخت|بساز|بذار|بزار)\s+(?:یک\s+|یه\s+)?پروژه)/u', $text)) {
+            throw new RuntimeException('دستیار صوتی فعلاً پروژه ایجاد نمی‌کند. لطفاً پروژه را از بخش پروژه‌ها بسازید و نام و سرگروه آن را مشخص کنید.');
+        }
+    }
+
+    private static function structuredVoiceResult(string $transcript, array $users, array $projects, int $userId, string $engine, array $notes): ?array
+    {
+        if ($transcript === '') return null;
+        self::rejectProjectCreation($transcript);
+        $tasks = PersianVoiceParser::parseStructuredTask($transcript, $users, $projects, $userId);
+        if ($tasks === null) return null;
+        $notes[] = 'لطفاً عنوان، مسئول، زیرتسک‌ها و زمان را با صدای اصلی تطبیق دهید؛ عبارت‌های مبهم ممکن است اشتباه تشخیص داده شده باشند.';
+        return ['transcript' => $transcript, 'provider' => $engine !== '' ? $engine . ' + پردازشگر فارسی داخلی' : 'پردازشگر فارسی داخلی', 'tasks' => $tasks, 'notes' => $notes];
+    }
+
     /**
      * پردازش کامل ویس و/یا متن گفتار و بازگرداندن تسک‌های استخراج‌شده با تاریخ دقیق شمسی
      */
@@ -89,6 +109,9 @@ final class AiService
             }
         }
 
+
+        $structured = self::structuredVoiceResult($transcript, $assignableUsers, $projects, $currentUserId, $usedEngine, $notes);
+        if ($structured !== null) return $structured;
 
         // گام ۲: اگر کلید رایگان Google Gemini فعال است (می‌تواند مستقیم فایل صوتی فارسی را بدون نیاز به متن هم بفهمد!)
         if ($online
@@ -170,6 +193,9 @@ final class AiService
         if ($transcript === '') {
             throw new RuntimeException(self::sttFailureMessage($notes));
         }
+
+        $structured = self::structuredVoiceResult($transcript, $assignableUsers, $projects, $currentUserId, $usedEngine, $notes);
+        if ($structured !== null) return $structured;
 
         // گام ۳: تحلیل متن گفتار با Groq Llama 3.3 رایگان (در صورت وجود کلید رایگان)
         if ($online && in_array($preferred, ['auto', 'groq'], true) && $groqKey !== '') {

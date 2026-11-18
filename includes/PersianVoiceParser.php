@@ -128,12 +128,61 @@ final class PersianVoiceParser
         return count($out) >= 2 ? $out : [$seg];
     }
 
+    /** فرمان یک تسک با عنوان صریح و مراحل گفته‌شده در جمله‌های بعدی. */
+    public static function parseStructuredTask(string $transcript, array $users, array $projects, int $defaultUserId): ?array
+    {
+        $text = normalize_persian($transcript, true);
+        if (preg_match('/(?:تسک|وظیفه)\s+(?:دیگه|دیگر|بعدی)/u', $text)) return null;
+        if (!preg_match('/(?:تسک|وظیفه)\b/u', $text)
+            || !preg_match('/(?:زیر[\s\x{200C}]*تسک|زیر[\s\x{200C}]*مجموعه|مراحل|مراهل|مرحله)/u', $text)
+            || !preg_match('/(?:با\s+عنوان|با\s+موضوع)\s*[«"\']?([^،,.؟!]+?)(?=\s+و\s+همچنین|\s+و\s+(?:زیر|مرحله|مراحل)|[،,.؟!]|$)/u', $text, $m)) {
+            return null;
+        }
+        $title = trim_fa($m[1], ' «»"\'');
+        if (mb_strlen($title, 'UTF-8') < 3) return null;
+        // فقط خطاهای مشخص گفتار را در بافت زمانی تصحیح می‌کنیم، نه نام‌ها را.
+        $normalized = preg_replace('/فرداغ(?![\p{L}])/u', 'فردا', $text) ?? $text;
+        $normalized = preg_replace('/ساعت\s+هفته(?=\s+صبح)/u', 'ساعت هفت', $normalized) ?? $normalized;
+        $date = self::extractDate($normalized);
+        $time = self::extractTime($normalized);
+        $assignee = self::extractAssignee($normalized, $users, $defaultUserId);
+        $priority = self::extractPriority($normalized);
+        // ابتدا از خود متن زیرتسک‌های صریح را بگیر؛ زیرتسک ساختگی نساز.
+        $subtasks = [];
+        if (preg_match_all('/تماس\s+با\s+([^،,.؟!]+?)(?=\s+و\s+مرحله|[،,.؟!]|$)/u', $normalized, $items)) {
+            foreach ($items[1] as $item) {
+                $item = trim_fa($item, ' ،,.؟!');
+                if ($item !== '') $subtasks[] = 'تماس با ' . $item;
+            }
+        }
+        if (count($subtasks) < 2) return null;
+        $task = self::parseSingle($title, $users, $projects, $defaultUserId);
+        $task['title'] = $title;
+        $task['description'] = 'ثبت‌شده از طریق فرمان صوتی: «' . normalize_persian($transcript) . '»';
+        $task['due_date'] = $date['gregorian'];
+        $task['due_date_jalali'] = Jalali::toDateString($date['gregorian'], false);
+        $task['due_date_jalali_fa'] = fa_digits($task['due_date_jalali']);
+        $task['due_date_human'] = Jalali::toHuman($date['gregorian'], true, true);
+        $task['date_reason'] = $date['reason'];
+        $task['due_time'] = $time['time'];
+        $task['due_time_fa'] = $time['time'] ? fa_digits($time['time']) : '';
+        $task['assigned_to'] = $assignee['user_id'];
+        $task['assigned_name'] = $assignee['user_name'];
+        $task['priority'] = $priority['priority'];
+        $task['priority_label'] = task_priority_label($priority['priority']);
+        $task['subtasks'] = array_slice($subtasks, 0, 6);
+        return [$task];
+    }
+
     public static function parseMultiple(string $transcript, array $users, array $projects, int $defaultUserId): array
     {
         $normalized = normalize_persian($transcript, true);
         if ($normalized === '') {
             return [];
         }
+
+        $structured = self::parseStructuredTask($transcript, $users, $projects, $defaultUserId);
+        if ($structured !== null) return $structured;
 
         // جداسازی در صورتی که کاربر در یک ویس چند تسک مجزا گفته باشد
         // ۱) مرز جمله‌ها: نقطه، علامت سؤال، تعجب و خط جدید
