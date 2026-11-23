@@ -238,6 +238,7 @@ final class Database
     public static function transaction(callable $callback): mixed
     {
         $pdo = self::pdo();
+        if ($pdo->inTransaction()) return $callback($pdo);
         $pdo->beginTransaction();
         try {
             $result = $callback($pdo);

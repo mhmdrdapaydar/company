@@ -212,6 +212,37 @@ function create_task_record(array $input, string $createdVia, ?string $voiceFile
         return $taskId;
     });
 }
+/** Expand recipients before starting the transaction, never trusting client-provided IDs. */
+function task_recipients(array $input): array
+{
+    global $uid;
+    $many = array_key_exists('assigned_ids', $input) || !empty($input['assign_all']);
+    if ($many && !Auth::isManager()) json_error('تنها مدیر می‌تواند تسک چندنفره ثبت کند.', 403);
+    if (!empty($input['assign_all'])) {
+        $ids = array_map(static fn($u) => (int) $u['id'], Auth::assignableUsers());
+    } elseif (array_key_exists('assigned_ids', $input)) {
+        if (!is_array($input['assigned_ids']) || count($input['assigned_ids']) > 1000) json_error('فهرست کارمندان نامعتبر است.');
+        $ids = [];
+        foreach ($input['assigned_ids'] as $id) {
+            if (!is_scalar($id) || !ctype_digit((string) $id) || (int) $id <= 0) json_error('کارمند نامعتبر است.');
+            $ids[] = (int) $id;
+        }
+        $ids = array_values(array_unique($ids));
+    } else $ids = [(int) ($input['assigned_to'] ?? $uid)];
+    if (!$ids) json_error('حداقل یک کارمند انتخاب کنید.');
+    foreach ($ids as $id) {
+        if (!Auth::canAssignTo($id) || !Database::fetchOne('SELECT id FROM users WHERE id = ? AND is_active = 1', [$id])) json_error('کارمند انتخاب‌شده نامعتبر یا غیرمجاز است.', 403);
+    }
+    return $ids;
+}
+function create_tasks_for_recipients(array $input, array $ids, string $via, ?string $file, ?string $transcript, ?string $provider, int $duration = 0): array
+{
+    return Database::transaction(function () use ($input, $ids, $via, $file, $transcript, $provider, $duration): array {
+        $created = [];
+        foreach ($ids as $id) { $item = $input; $item['assigned_to'] = $id; $created[] = create_task_record($item, $via, $file, $transcript, $provider, $duration); }
+        return $created;
+    });
+}
 function task_detail_payload(array $t): array
 {
     $out = enrich_task($t);
@@ -445,9 +476,9 @@ try {
 
         case 'task_create': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
-            $taskId = create_task_record($data, 'manual', null, null, null);
-            $t = fetch_task($taskId);
-            json_success(['task' => task_detail_payload($t)], 'تسک با موفقیت ایجاد شد.');
+            $ids = create_tasks_for_recipients($data, task_recipients($data), 'manual', null, null, null);
+            $t = fetch_task($ids[0]);
+            json_success(['task' => task_detail_payload($t), 'ids' => $ids], 'تسک با موفقیت ایجاد شد.');
             break;
         }
 
@@ -745,8 +776,7 @@ try {
             $createdIds = [];
             foreach ($decoded as $item) {
                 if (!is_array($item)) continue;
-                $tid = create_task_record($item, 'voice_ai', $voiceFile, $transcript, $provider, $duration);
-                $createdIds[] = $tid;
+                $createdIds = array_merge($createdIds, create_tasks_for_recipients($item, task_recipients($item), 'voice_ai', $voiceFile, $transcript, $provider, $duration));
             }
             if (empty($createdIds)) json_error('هیچ تسک معتبری ایجاد نشد.');
             $createdTasks = [];
@@ -1100,6 +1130,12 @@ try {
             Database::execute('DELETE FROM announcements WHERE id = ?', [$id]);
             log_activity($uid, 'delete_announcement', 'announcement', $id, 'اطلاعیه حذف شد.');
             json_success([], 'اطلاعیه حذف شد.');
+            break;
+        }
+
+        case 'session_touch': {
+            if ($method !== 'POST') json_error('متد نامعتبر است.', 405);
+            json_success();
             break;
         }
 

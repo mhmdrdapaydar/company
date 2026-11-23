@@ -35,18 +35,12 @@ if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
         || (isset($_SERVER['SERVER_PORT']) && (string) $_SERVER['SERVER_PORT'] === '443')
         || strtolower((string) ($_SERVER['REQUEST_SCHEME'] ?? '')) === 'https';
 
-    // اگر مسیر پیش‌فرض سشن قابل نوشتن نبود، پوشه داخلی امن را استفاده کن
-    $defaultSavePath = session_save_path();
-    if ($defaultSavePath === '' || !@is_writable($defaultSavePath)) {
-        $localSessionDir = STORAGE_PATH . '/sessions';
-        if (!is_dir($localSessionDir)) {
-            @mkdir($localSessionDir, 0700, true);
-        }
-        if (is_dir($localSessionDir) && is_writable($localSessionDir)) {
-            session_save_path($localSessionDir);
-        }
-    }
+    // Isolate session storage from other PHP applications with shorter GC policies.
+    $localSessionDir = STORAGE_PATH . '/sessions';
+    if (!is_dir($localSessionDir)) @mkdir($localSessionDir, 0700, true);
+    if (is_dir($localSessionDir) && is_writable($localSessionDir)) session_save_path($localSessionDir);
 
+    ini_set('session.gc_maxlifetime', (string) (7 * 86400));
     session_name('HAMKAR_SESSION');
     session_set_cookie_params([
         'lifetime' => 86400 * 7,
@@ -56,6 +50,18 @@ if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
         'samesite' => $isHttps ? 'None' : 'Lax',
     ]);
     session_start();
+    if (!empty($_SESSION['user_id'])) {
+        $last = (int) ($_SESSION['last_activity'] ?? time());
+        if ($last < time() - 7 * 86400) {
+            unset($_SESSION['user_id'], $_SESSION['last_activity']);
+        } elseif (basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) !== 'api.php' || strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            $_SESSION['last_activity'] = time();
+            setcookie(session_name(), session_id(), [
+                'expires' => time() + 7 * 86400, 'path' => '/', 'secure' => $isHttps,
+                'httponly' => true, 'samesite' => $isHttps ? 'None' : 'Lax',
+            ]);
+        }
+    }
 }
 
 // بارگذاری کلاس‌ها و توابع اصلی سامانه

@@ -55,7 +55,7 @@
         '      <h3>🎙️ دستیار صوتی هوش مصنوعی</h3>' +
         '      <button class="icon-btn" data-voice-close title="بستن">✕</button>' +
         '    </div>' +
-        '    <div class="alert alert-info small">✨ به فارسی صحبت کنید؛ مثلاً: «فردا ساعت ۱۰ صبح جلسه با تیم بازاریابی، اولویت بالا، با سارا». هوش مصنوعی خودش موضوع، روز شمسی، ساعت، مسئول و زیرتسک‌ها را تشخیص می‌دهد.</div>' +
+        '    <div class="alert alert-info small">✨ به فارسی صحبت کنید؛ مثلاً: «فردا ساعت ۱۰ صبح جلسه با تیم بازاریابی، با سارا». هوش مصنوعی خودش موضوع، روز شمسی، ساعت، مسئول را تشخیص می‌دهد.</div>' +
         '    <div class="voice-recorder">' +
         '      <canvas class="wave-canvas" id="waveCanvas" width="800" height="90"></canvas>' +
         '      <div class="rec-timer" id="recTimer">۰۰:۰۰</div>' +
@@ -74,9 +74,9 @@
         '    </div>' +
         '    <label class="field">' +
         '      <span>متن فرمان صوتی (قابل ویرایش)</span>' +
-        '      <textarea id="voiceTranscript" rows="3" placeholder="مثلاً: پس‌فردا ساعت ۹ و نیم صبح تماس با مشتری، اولویت فوری، زیرتسک: آماده‌سازی فایل قیمت، ارسال ایمیل پیگیری"></textarea>' +
+        '      <textarea id="voiceTranscript" rows="3" placeholder="مثلاً: پس‌فردا ساعت ۹ و نیم صبح تماس با مشتری"></textarea>' +
         '    </label>' +
-        '    <div class="checkline">' +
+        '    <div class="checkline"' + (this.options.isManager ? ' hidden' : '') + '>' +
         '      <input type="checkbox" id="voiceAutoCreate">' +
         '      <label for="voiceAutoCreate">ثبت خودکار تسک‌ها بدون نمایش پیش‌نمایش</label>' +
         '    </div>' +
@@ -107,15 +107,10 @@
         '          <label class="field"><span>ساعت</span><input type="time" data-f="due_time"></label>' +
         '        </div>' +
         '        <div class="form-row">' +
-        '          <label class="field"><span>اولویت</span><select data-f="priority"><option value="low">کم</option><option value="medium">متوسط</option><option value="high">زیاد</option><option value="urgent">فوری</option></select></label>' +
-        '          <label class="field"><span>مدت تخمینی (دقیقه)</span><input type="number" min="0" max="1440" data-f="estimated_minutes"></label>' +
+        '          <label class="field"><span>مسئول انجام</span><select data-f="assigned_to"' + (this.options.isManager ? ' multiple size="4"' : '') + '>' + users + '</select>' + (this.options.isManager ? '<small>انتخاب‌ها را بررسی کنید؛ می‌توانید چند نفر را انتخاب کنید.</small>' : '') + '</label>' +
         '        </div>' +
-        '        <div class="form-row">' +
-        '          <label class="field"><span>مسئول انجام</span><select data-f="assigned_to">' + users + '</select></label>' +
-        '        </div>' +
-        '        <label class="field"><span>زیرتسک‌ها (هر خط یک مورد)</span><textarea data-f="subtasks" rows="2"></textarea></label>' +
         '        <label class="field"><span>توضیحات</span><textarea data-f="description" rows="2"></textarea></label>' +
-        '        <div class="ai-meta"><span class="badge badge-future" data-badge="date"></span><span class="badge badge-medium" data-badge="prio"></span><span class="badge badge-todo" data-badge="assignee"></span></div>' +
+        '        <div class="ai-meta"><span class="badge badge-future" data-badge="date"></span><span class="badge badge-todo" data-badge="assignee"></span></div>' +
         '      </div>' +
         '    </template>' +
         '  </div>' +
@@ -776,7 +771,7 @@
       document.getElementById('voicePreviewWrap').classList.remove('hidden');
       this.renderPreview();
       toast(res.message || 'پردازش انجام شد. پیش‌نمایش را بررسی کنید.', 'success');
-      if (document.getElementById('voiceAutoCreate').checked && !res.requires_review) {
+      if (document.getElementById('voiceAutoCreate').checked && !res.requires_review && !this.options.isManager) {
         this.confirm();
       } else if (res.requires_review) {
         toast('این فرمان مبهم است؛ لطفاً پیش‌نمایش را بررسی و تأیید کنید.', 'info');
@@ -802,16 +797,22 @@
         f('due_date_jalali').value = t.due_date_jalali_fa || t.due_date_jalali || '';
         var tm = (t.due_time || '').match(/^(\d{1,2}):(\d{2})/);
         f('due_time').value = tm ? (tm[1].padStart(2, '0') + ':' + tm[2]) : '';
-        f('priority').value = t.priority || 'medium';
-        f('estimated_minutes').value = t.estimated_minutes || 60;
         if (t.assigned_to) f('assigned_to').value = String(t.assigned_to);
-        f('subtasks').value = (t.subtasks || []).join('\n');
+        if (self.options.isManager && self.previewTasks.length === 1) {
+          var text = (document.getElementById('voiceTranscript').value || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک');
+          var all = /(?:همه|تمام)\s*(?:کارمندان|کارکنان|افراد|اعضا|بیان|باشند)/.test(text);
+          var users = self.options.users || [];
+          function hasName(name) { var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return new RegExp('(^|[^\\p{L}\\p{N}])' + escaped + '(?=$|[^\\p{L}\\p{N}])', 'u').test(text); }
+          var selected = users.filter(function(u) {
+            var full = (u.full_name || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').trim();
+            var first = full.split(/\s+/)[0];
+            return full && (hasName(full) || (first.length >= 2 && users.filter(function(x) { return (x.full_name || '').split(/\s+/)[0] === first; }).length === 1 && hasName(first)));
+          }).map(function(u) { return String(u.id); });
+          if (all || selected.length > 1) Array.from(f('assigned_to').options).forEach(function(o) { o.selected = all || selected.includes(o.value); });
+        }
         f('description').value = t.description || '';
         node.querySelector('[data-badge="date"]').textContent = '📅 ' + (t.due_date_human || '—') + (t.due_time_fa ? ' — ساعت ' + t.due_time_fa : '');
-        var pr = node.querySelector('[data-badge="prio"]');
-        pr.className = 'badge badge-' + (t.priority || 'medium');
-        pr.textContent = '⚡ اولویت ' + (t.priority_label || '');
-        node.querySelector('[data-badge="assignee"]').textContent = '👤 ' + (t.assigned_name || '—');
+        node.querySelector('[data-badge="assignee"]').textContent = '👤 ' + Array.from(f('assigned_to').selectedOptions).map(function(o) { return o.textContent; }).join('، ');
         wrap.appendChild(node);
       });
     },
@@ -826,21 +827,20 @@
         var dateVal = f('due_date_jalali');
         var greg = dateVal ? window.JalaliJS.parseToGregorian(dateVal) : null;
         if (dateVal && !greg) { toast('تاریخ شمسی نامعتبر است: ' + dateVal, 'error'); throw new Error('invalid date'); }
-        var subs = f('subtasks').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
-        out.push({
+        var assignees = node.querySelector('[data-f="assigned_to"]');
+        var selectedIds = Array.from(assignees.selectedOptions).map(function(o) { return Number(o.value); });
+        if (!selectedIds.length) { toast('حداقل یک مسئول انتخاب کنید.', 'error'); throw new Error('missing assignee'); }
+        var task = {
           title: f('title'),
           description: f('description'),
           due_date: greg || '',
           due_date_jalali: greg ? window.JalaliJS.gregorianToJalaliInput(greg) : '',
           due_time: f('due_time'),
-          priority: f('priority'),
-          assigned_to: Number(f('assigned_to')) || 0,
-          estimated_minutes: Number(f('estimated_minutes')) || 0,
-          category: orig.category || 'عمومی',
-          tags: orig.tags || '',
-          recurrence: orig.recurrence || 'none',
-          subtasks: subs
-        });
+          assigned_to: selectedIds[0],
+          recurrence: orig.recurrence || 'none'
+        };
+        if (self.options.isManager && selectedIds.length > 1) task.assigned_ids = selectedIds;
+        out.push(task);
       });
       return out;
     },

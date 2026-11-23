@@ -75,7 +75,7 @@ $theme       = 'light';
       <?php if ($isAdmin): ?>
       <a href="#settings" data-section="settings"><span>⚙️</span> تنظیمات سیستم</a>
       <?php endif; ?>
-      <a href="export.php?type=tasks&format=print" target="_blank"><span>🖨️</span> گزارش چاپی تسک‌ها</a>
+      <?php if ($isManager): ?><a href="export.php?type=tasks&format=print" target="_blank"><span>🖨️</span> گزارش چاپی تسک‌ها</a><?php endif; ?>
       <a href="#" id="btnInstallApp"><span>📲</span> نصب برنامه</a>
       <a href="#" id="btnDesktopNotifications"><span>🔔</span> فعال‌سازی اعلان دستگاه</a>
       <a href="logout.php"><span>🚪</span> خروج از حساب</a>
@@ -127,6 +127,14 @@ $theme       = 'light';
           </div>
         </div>
 
+        <div class="card quick-capture">
+          <form id="homeTaskForm" class="quick-capture-form">
+            <label for="homeTaskTitle"><strong>ثبت سریع تسک</strong></label>
+            <div class="quick-capture-input"><input id="homeTaskTitle" maxlength="255" required placeholder="چه کاری باید انجام شود؟"><button class="btn btn-primary" type="submit">ثبت تسک</button><button class="btn" type="button" id="homeTaskDetails">گزینه‌های بیشتر</button></div>
+          </form>
+          <div class="quick-voice"><button type="button" id="homeVoice" class="quick-voice-button" aria-label="ضبط تسک صوتی">🎙️</button><span>ثبت با صدا</span></div>
+        </div>
+
         <div class="grid grid-4" id="dashStats" style="margin-bottom:16px">
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
@@ -138,10 +146,6 @@ $theme       = 'light';
           <div class="card">
             <h3>📈 روند ۷ روز اخیر <span class="small muted" style="font-weight:400">(ایجاد شده / تکمیل شده)</span></h3>
             <div class="chart-box"><canvas class="chart" id="chart7d" width="800" height="260"></canvas></div>
-          </div>
-          <div class="card">
-            <h3>⚡ توزیع اولویت تسک‌های باز</h3>
-            <div class="chart-box"><canvas class="chart" id="chartPriority" width="800" height="260"></canvas></div>
           </div>
         </div>
 
@@ -162,7 +166,7 @@ $theme       = 'light';
         <div class="card" style="margin-bottom:16px">
           <div class="toolbar" style="margin-bottom:0">
             <div class="search">
-              <input type="text" id="taskSearch" placeholder="جستجو در عنوان، توضیحات، کد یا برچسب تسک...">
+              <input type="text" id="taskSearch" placeholder="جستجو در عنوان، توضیحات، یا کد تسک...">
               <span>🔍</span>
             </div>
             <select id="taskScope">
@@ -178,13 +182,6 @@ $theme       = 'light';
               <option value="in_progress">در حال انجام</option>
               <option value="review">در بررسی</option>
               <option value="done">انجام شده</option>
-            </select>
-            <select id="taskPriorityFilter">
-              <option value="">همه اولویت‌ها</option>
-              <option value="urgent">فوری</option>
-              <option value="high">زیاد</option>
-              <option value="medium">متوسط</option>
-              <option value="low">کم</option>
             </select>
             <?php if ($isManager): ?>
             <select id="taskUserFilter">
@@ -407,30 +404,20 @@ $theme       = 'light';
           <option value="review">در بررسی</option><option value="done">انجام شده</option>
         </select></label>
       </div>
+      <?php if ($isManager): ?><fieldset id="tfMultiWrap" class="field"><legend>واگذاری به چند نفر</legend><label><input type="checkbox" id="tfAll"> همه کارمندان</label><select id="tfAssignees" multiple size="4" aria-label="انتخاب چند کارمند"><?php foreach ($assignables as $a): ?><option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?></option><?php endforeach; ?></select><span class="small muted">برای انتخاب چند نفر از فهرست استفاده کنید؛ انتخاب خالی یعنی مسئول بالا.</span></fieldset><?php endif; ?>
       <div class="form-row3">
-        <label class="field"><span>اولویت</span><select id="tfPriority">
-          <option value="low">کم</option><option value="medium" selected>متوسط</option>
-          <option value="high">زیاد</option><option value="urgent">فوری</option>
-        </select></label>
         <label class="field"><span>تاریخ سررسید (شمسی)</span><input type="text" id="tfDueDate" placeholder="۱۴۰۵/۰۸/۲۶" dir="ltr"></label>
         <label class="field"><span>ساعت سررسید</span><input type="time" id="tfDueTime"></label>
       </div>
       <div class="form-row3">
         <label class="field"><span>تاریخ شروع (شمسی)</span><input type="text" id="tfStartDate" placeholder="۱۴۰۵/۰۸/۲۰" dir="ltr"></label>
-        <label class="field"><span>مدت تخمینی (دقیقه)</span><input type="number" id="tfEstimate" min="0" max="10080" value="60"></label>
         <label class="field"><span>تکرار</span><select id="tfRecurrence">
           <option value="none">بدون تکرار</option><option value="daily">روزانه</option>
           <option value="weekly">هفتگی</option><option value="monthly">ماهانه</option>
         </select></label>
       </div>
-      <div class="form-row">
-        <label class="field"><span>دسته‌بندی</span><input type="text" id="tfCategory" placeholder="مثلاً: فروش، فنی، اداری"></label>
-        <label class="field"><span>برچسب‌ها (با کاما)</span><input type="text" id="tfTags" placeholder="گزارش، مشتری، فوری"></label>
-      </div>
-      <label class="field"><span>زیرتسک‌ها (هر خط یک مورد)</span><textarea id="tfSubtasks" rows="2" placeholder="جمع‌آوری داده‌ها&#10;تهیه نمودار&#10;ارسال به مدیر"></textarea></label>
       <div class="toolbar" style="margin-bottom:0">
         <button type="submit" class="btn btn-primary" id="btnSaveTask">💾 ذخیره تسک</button>
-        <button type="button" class="btn" id="btnSuggestSubtasks">✨ پیشنهاد زیرتسک با هوش مصنوعی</button>
         <button type="button" class="btn" id="btnCancelTask">انصراف</button>
       </div>
     </form>

@@ -60,8 +60,8 @@ $csrf = csrf_token();
     <form method="post" action="login.php" autocomplete="on">
       <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
       <label class="field">
-        <span>نام کاربری، ایمیل یا کد پرسنلی</span>
-        <input type="text" name="username" required autofocus placeholder="مثلاً admin یا EMP-1001" value="<?= e(clean_line($_POST['username'] ?? '', 100)) ?>">
+        <span>شماره تلفن، نام کاربری، ایمیل یا کد پرسنلی</span>
+        <input type="text" name="username" required autofocus placeholder="مثلاً شماره تلفن یا نام کاربری" value="<?= e(clean_line($_POST['username'] ?? '', 100)) ?>">
       </label>
       <label class="field">
         <span>رمز عبور</span>

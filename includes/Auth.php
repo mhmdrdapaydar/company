@@ -134,6 +134,18 @@ final class Auth
             [$idClean, $idClean, strtoupper($idClean)]
         );
 
+        // شماره تلفن فقط در صورت یکتا بودن قابل استفاده برای ورود است.
+        if (!$user) {
+            $phone = preg_replace('/[^0-9]/', '', $idClean);
+            if ($phone !== '' && strlen($phone) >= 10 && strlen($phone) <= 15) {
+                $matches = [];
+                foreach (Database::fetchAll('SELECT * FROM users WHERE is_active = 1 AND phone IS NOT NULL AND phone <> ?', ['']) as $candidate) {
+                    $normalized = preg_replace('/[^0-9]/', '', normalize_persian((string) $candidate['phone'], true));
+                    if ($normalized === $phone) $matches[] = $candidate;
+                }
+                if (count($matches) === 1) $user = $matches[0];
+            }
+        }
         if (!$user || !password_verify($password, (string) $user['password_hash'])) {
             self::registerFailedLogin();
             $left = self::MAX_LOGIN_ATTEMPTS - (int) ($_SESSION['_login_throttle']['fails'] ?? 0);
@@ -153,6 +165,7 @@ final class Auth
 
         self::clearLoginThrottle();
         $_SESSION['user_id'] = (int) $user['id'];
+        $_SESSION['last_activity'] = time();
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
         $now = now_datetime();
@@ -219,7 +232,7 @@ final class Auth
         if (!$u) {
             return false;
         }
-        if ($u['role'] === 'admin') {
+        if (in_array($u['role'], ['admin', 'manager'], true)) {
             return true;
         }
         if ($targetUserId === $u['id']) {
@@ -245,7 +258,7 @@ final class Auth
         if (!$u) {
             return [];
         }
-        if ($u['role'] === 'admin' || get_setting('allow_employee_peer_task', '0') === '1') {
+        if (in_array($u['role'], ['admin', 'manager'], true) || get_setting('allow_employee_peer_task', '0') === '1') {
             return Database::fetchAll(
                 'SELECT u.id, u.full_name, u.employee_code, u.role, u.position_title, u.department_id, u.avatar_color, d.name AS department_name
                  FROM users u

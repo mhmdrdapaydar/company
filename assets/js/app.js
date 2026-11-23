@@ -102,15 +102,10 @@
     var map = { todo: 'در انتظار', in_progress: 'در حال انجام', review: 'در بررسی', done: 'انجام شده' };
     return '<span class="badge badge-' + esc(status) + '">' + esc(label || map[status] || status) + '</span>';
   }
-  function priorityBadge(pr, label) {
-    var map = { urgent: 'فوری', high: 'زیاد', medium: 'متوسط', low: 'کم' };
-    return '<span class="badge badge-' + esc(pr) + '">⚡ ' + esc(label || map[pr] || pr) + '</span>';
-  }
   function dueBadge(t) {
     var b = t.due_badge || { text: 'بدون سررسید', state: 'none' };
     return '<span class="badge badge-' + esc(b.state) + '">📅 ' + esc(b.text) + (t.due_time_fa ? ' — ' + esc(t.due_time_fa) : '') + '</span>';
   }
-  function prioDot(pr) { return '<span class="prio-dot prio-' + esc(pr) + '"></span>'; }
 
   function emptyState(icon, text, action) {
     return '<div class="empty"><span class="big">' + icon + '</span>' + esc(text) + (action ? '<div style="margin-top:12px">' + action + '</div>' : '') + '</div>';
@@ -196,7 +191,6 @@
       renderMyTasks(res.my_tasks || []);
       renderUpcoming(res.my_tasks || []);
       renderChart7d(res.chart_7d || []);
-      renderChartPriority(res.by_priority || {});
     }).catch(function (err) { toast(err.message, 'error'); });
     // نمودار سررسیدهای نزدیک از تسک‌ها
     api('tasks_list', { scope: 'mine' }).then(function (res) {
@@ -233,7 +227,6 @@
     if (!tasks.length) { wrap.innerHTML = emptyState('🎉', 'تسکی روی میز شما نیست!'); return; }
     wrap.innerHTML = tasks.slice(0, 6).map(function (t) {
       return '<div class="task-list-row" data-task="' + t.id + '">' +
-        prioDot(t.priority) +
         '<div class="grow"><h5>' + esc(t.title) + '</h5>' +
         '<div class="small muted">' + esc(t.task_code) + ' • ' + statusBadge(t.status, t.status_label) + '</div></div>' +
         dueBadge(t) + '</div>';
@@ -311,55 +304,9 @@
     ctx.fillStyle = '#0284c7'; ctx.fillRect(w - 70, 6, 10, 10);
     ctx.fillStyle = text; ctx.fillText('تکمیل', w - 80, 15);
   }
-  function renderChartPriority(bp) {
-    var canvas = $('#chartPriority');
-    if (!canvas) return;
-    var p = prepCanvas(canvas), ctx = p.ctx, w = p.w, h = p.h;
-    var text = cssVar('--text', '#0f172a'), muted = cssVar('--muted', '#64748b');
-    ctx.clearRect(0, 0, w, h);
-    var rows = [
-      { key: 'urgent', label: 'فوری', color: '#dc2626' },
-      { key: 'high', label: 'زیاد', color: '#ea580c' },
-      { key: 'medium', label: 'متوسط', color: '#ca8a04' },
-      { key: 'low', label: 'کم', color: '#6366f1' }
-    ];
-    var total = rows.reduce(function (s, r) { return s + (bp[r.key] || 0); }, 0);
-    var padR = 10, padL = 74, top = 14, rowH = Math.min(46, (h - top - 10) / 4), barMax = w - padR - padL - 40;
-    rows.forEach(function (r, i) {
-      var y = top + i * rowH;
-      var val = bp[r.key] || 0;
-      var bw = total > 0 ? Math.max(val > 0 ? 8 : 0, (val / total) * barMax) : 0;
-      ctx.fillStyle = text; ctx.font = '12px Vazirmatn, Tahoma'; ctx.textAlign = 'right';
-      ctx.fillText(r.label, w - padR, y + 18);
-      roundRect(ctx, padR, y + 5, barMax, 16, 8); ctx.fillStyle = cssVar('--bg2', '#e2e8f0'); ctx.fill();
-      if (bw > 0) { roundRect(ctx, padR + barMax - bw, y + 5, bw, 16, 8); ctx.fillStyle = r.color; ctx.fill(); }
-      ctx.fillStyle = muted; ctx.font = '11px Vazirmatn, Tahoma'; ctx.textAlign = 'left';
-      ctx.fillText(FAT(val), padL - 8 + 24, y + 18);
-      if (total > 0) {
-        ctx.fillStyle = r.color; ctx.textAlign = 'left';
-        ctx.fillText(FAT(Math.round(val * 100 / total)) + '٪', padR + barMax + 6, y + 18);
-      }
-    });
-    if (total === 0) {
-      ctx.fillStyle = muted; ctx.font = '13px Vazirmatn, Tahoma'; ctx.textAlign = 'center';
-      ctx.fillText('تسک باز با اولویت ثبت نشده است', w / 2, h / 2);
-    }
-  }
-  function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
-    if (h < 0) { y += h; h = -h; }
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
   function rerenderCharts() {
     if (state.section === 'dashboard' && state.dashboard) {
       renderChart7d(state.dashboard.chart_7d || []);
-      renderChartPriority(state.dashboard.by_priority || {});
     }
   }
 
@@ -369,7 +316,6 @@
     var s = $('#taskSearch').value.trim();
     if (s) q.search = s;
     var st = $('#taskStatusFilter').value; if (st) q.status = st;
-    var pr = $('#taskPriorityFilter').value; if (pr) q.priority = pr;
     var uf = $('#taskUserFilter'); if (uf && uf.value) q.assigned_to = uf.value;
     return q;
   }
@@ -409,13 +355,12 @@
     }
     var html = state.tasks.map(function (t) {
       return '<div class="task-list-row" data-task="' + t.id + '">' +
-        prioDot(t.priority) +
         '<div class="grow">' +
         '<h5>' + esc(t.title) + (t.created_via === 'voice_ai' ? ' <span title="ثبت با هوش مصنوعی">🎙️</span>' : '') + '</h5>' +
         '<div class="small muted">' + esc(t.task_code) + ' • ' + esc(t.assignee_name || '—') +
-        (t.subtasks_total ? ' • ☑️ ' + FAT(t.subtasks_done) + '/' + FAT(t.subtasks_total) : '') + '</div></div>' +
+        '</div></div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end">' +
-        statusBadge(t.status) + priorityBadge(t.priority) + dueBadge(t) + '</div>' +
+        statusBadge(t.status) + dueBadge(t) + '</div>' +
         (t.progress > 0 && t.status !== 'done' ?
           '<div style="width:70px"><div class="progress"><div style="width:' + t.progress + '%"></div></div><div class="small muted center">' + FAT(t.progress) + '٪</div></div>' : '') +
         '</div>';
@@ -472,9 +417,8 @@
   }
   function kanbanCard(t) {
     return '<div class="task-card" data-task="' + t.id + '">' +
-      '<div class="tc-top">' + priorityBadge(t.priority) + '</div>' +
       '<h5>' + esc(t.title) + (t.created_via === 'voice_ai' ? ' 🎙️' : '') + '</h5>' +
-      '<div class="tc-meta">' + dueBadge(t) + (t.subtasks_total ? '<span>☑️ ' + FAT(t.subtasks_done) + '/' + FAT(t.subtasks_total) + '</span>' : '') + '</div>' +
+      '<div class="tc-meta">' + dueBadge(t) + '</div>' +
       (t.progress > 0 ? '<div class="progress" style="margin-top:8px"><div style="width:' + t.progress + '%"></div></div>' : '') +
       '<div class="tc-foot">' + avatar(t.assignee_name, t.assignee_color, 'avatar-sm') + '<span class="small muted">' + esc(t.assignee_name || '—') + '</span></div>' +
       '</div>';
@@ -485,7 +429,7 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(loadTasks, 380);
     });
-    ['#taskScope', '#taskStatusFilter', '#taskPriorityFilter', '#taskUserFilter'].forEach(function (s) {
+    ['#taskScope', '#taskStatusFilter', '#taskUserFilter'].forEach(function (s) {
       var el = $(s);
       if (el) el.addEventListener('change', loadTasks);
     });
@@ -508,16 +452,12 @@
     $('#tfTitle').value = task ? task.title : (prefill && prefill.title) || '';
     $('#tfDescription').value = task ? (task.description || '') : (prefill && prefill.description) || '';
     $('#tfAssignee').value = String(task ? task.assigned_to : (prefill && prefill.assigned_to) || APP.user.id);
+    var multi = $('#tfMultiWrap'); if (multi) { multi.hidden = !!task; $('#tfAll').checked = false; Array.from($('#tfAssignees').options).forEach(function (o) { o.selected = false; }); }
     $('#tfStatus').value = task ? task.status : 'todo';
-    $('#tfPriority').value = task ? task.priority : (prefill && prefill.priority) || 'medium';
     $('#tfDueDate').value = task && task.due_date ? J.gregorianToJalaliInput(task.due_date) : (prefill && prefill.due_date_jalali) || APP.today.jalali;
     $('#tfDueTime').value = task && task.due_time ? task.due_time : (prefill && prefill.due_time) || '';
     $('#tfStartDate').value = task && task.start_date ? J.gregorianToJalaliInput(task.start_date) : '';
-    $('#tfEstimate').value = task ? (task.estimated_minutes || 60) : (prefill && prefill.estimated_minutes) || 60;
     $('#tfRecurrence').value = task ? (task.recurrence || 'none') : 'none';
-    $('#tfCategory').value = task ? (task.category || '') : '';
-    $('#tfTags').value = task ? (task.tags || '') : '';
-    $('#tfSubtasks').value = '';
     $('#modalTask').classList.add('open');
     document.body.style.overflow = 'hidden';
     setTimeout(function () { $('#tfTitle').focus(); }, 120);
@@ -531,20 +471,6 @@
     $('#taskModalClose').addEventListener('click', closeTaskForm);
     $('#btnCancelTask').addEventListener('click', closeTaskForm);
     $('#modalTask').addEventListener('click', function (e) { if (e.target === this) closeTaskForm(); });
-    $('#btnSuggestSubtasks').addEventListener('click', function () {
-      var title = $('#tfTitle').value.trim();
-      if (!title) { toast('ابتدا عنوان تسک را بنویسید.', 'error'); return; }
-      this.disabled = true;
-      var btn = this;
-      api('voice_suggest_subtasks', { title: title, category: $('#tfCategory').value })
-        .then(function (res) {
-          if (res.subtasks && res.subtasks.length) {
-            $('#tfSubtasks').value = res.subtasks.join('\n');
-            toast('✨ ' + FAT(res.subtasks.length) + ' زیرتسک پیشنهادی اضافه شد.');
-          } else toast('پیشنهادی پیدا نشد.', 'info');
-        }).catch(function (e) { toast(e.message, 'error'); })
-        .finally(function () { btn.disabled = false; });
-    });
     $('#taskForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var id = $('#tfId').value;
@@ -559,16 +485,12 @@
         description: $('#tfDescription').value.trim(),
         assigned_to: Number($('#tfAssignee').value),
         status: $('#tfStatus').value,
-        priority: $('#tfPriority').value,
         due_date: dueG || '',
         due_time: $('#tfDueTime').value,
         start_date: startG || '',
-        estimated_minutes: Number($('#tfEstimate').value) || 0,
-        recurrence: $('#tfRecurrence').value,
-        category: $('#tfCategory').value.trim(),
-        tags: $('#tfTags').value.trim(),
-        subtasks: $('#tfSubtasks').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)
+        recurrence: $('#tfRecurrence').value
       };
+      if (!id && $('#tfMultiWrap')) { var selected = Array.from($('#tfAssignees').selectedOptions).map(function (o) { return Number(o.value); }); if ($('#tfAll').checked) payload.assign_all = true; else if (selected.length) payload.assigned_ids = selected; }
       if (!payload.title) { toast('عنوان تسک الزامی است.', 'error'); return; }
       var btn = $('#btnSaveTask');
       btn.disabled = true;
@@ -605,10 +527,9 @@
     api('task_get', { id: id }).then(function (res) {
       var t = res.task;
       $('#drawerTitle').innerHTML = esc(t.title);
-      var subsDone = t.subtasks_done || 0, subsTotal = t.subtasks_total || 0;
       var html = '' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
-        statusBadge(t.status, t.status_label) + priorityBadge(t.priority, t.priority_label) + dueBadge(t) +
+        statusBadge(t.status, t.status_label) + dueBadge(t) +
         (t.created_via === 'voice_ai' ? '<span class="badge badge-low">🎙️ ساخته‌شده با هوش مصنوعی</span>' : '') +
         '</div>' +
         '<div class="small muted" style="margin-bottom:10px">کد: ' + esc(t.task_code) + ' • سازنده: ' + esc(t.creator_name || '—') + ' • ایجاد: ' + esc(t.created_human) + '</div>' +
@@ -622,12 +543,6 @@
         '<button class="btn btn-sm" data-act="archive">' + (t.is_archived ? '♻️ بازگردانی' : '🗄️ بایگانی') + '</button>' +
         '<button class="btn btn-sm btn-danger" data-act="delete">🗑️ حذف</button>' +
         '</div>' +
-        '<hr style="border:0;border-top:1px solid var(--border);margin:14px 0">' +
-        '<h4 style="font-size:14px">☑️ چک‌لیست (' + FAT(subsDone) + '/' + FAT(subsTotal) + ')</h4>' +
-        '<div id="drawerSubtasks">' + (t.subtasks.length ? t.subtasks.map(function (s) {
-          return '<div class="subtask-item' + (s.is_done ? ' done' : '') + '"><input type="checkbox" data-sub="' + s.id + '"' + (s.is_done ? ' checked' : '') + '><span class="grow">' + esc(s.title) + '</span><button class="icon-btn" data-subdel="' + s.id + '" title="حذف">✕</button></div>';
-        }).join('') : '<div class="small muted">زیرتسکی ندارد.</div>') + '</div>' +
-        '<div class="toolbar" style="margin-top:8px"><input type="text" id="newSubtaskInput" placeholder="افزودن زیرتسک..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text)"><button class="btn btn-sm" data-act="sub-add">➕ افزودن</button></div>' +
         '<hr style="border:0;border-top:1px solid var(--border);margin:14px 0">' +
         '<h4 style="font-size:14px">📎 پیوست‌ها (' + FAT(t.attachments.length) + ')</h4>' +
         '<div id="drawerAttachments">' + (t.attachments.length ? t.attachments.map(function (a) {
@@ -1226,6 +1141,7 @@
   function updateLiveSelect(select, items, emptyLabel) {
     if (!select) return;
     var current = select.value;
+    var selectedValues = select.multiple ? Array.from(select.selectedOptions).map(function(o) { return o.value; }) : [];
     var fragment = document.createDocumentFragment();
     if (emptyLabel !== null) {
       var empty = document.createElement('option'); empty.value = ''; empty.textContent = emptyLabel; fragment.appendChild(empty);
@@ -1236,7 +1152,8 @@
       fragment.appendChild(option);
     });
     select.replaceChildren(fragment);
-    if (Array.prototype.some.call(select.options, function (option) { return option.value === current; })) select.value = current;
+    if (select.multiple) Array.from(select.options).forEach(function(o) { o.selected = selectedValues.includes(o.value); });
+    else if (Array.prototype.some.call(select.options, function (option) { return option.value === current; })) select.value = current;
   }
   function refreshLiveReferences() {
     if (!canRefreshLive()) return;
@@ -1246,7 +1163,9 @@
       if (JSON.stringify(users.map(function (u) { return [u.id, u.full_name, u.department_name]; })) !==
           JSON.stringify((APP.users || []).map(function (u) { return [u.id, u.full_name, u.department_name]; }))) {
         APP.users = users;
+        if (window.VoiceAI && VoiceAI.options) VoiceAI.options.users = users;
         updateLiveSelect($('#tfAssignee'), users, null);
+        updateLiveSelect($('#tfAssignees'), users, null);
         updateLiveSelect($('#taskUserFilter'), users, 'همه کارمندان');
         var template = document.getElementById('voiceTaskTpl');
         if (template && template.content) updateLiveSelect(template.content.querySelector('[data-f="assigned_to"]'), users, null);
@@ -1557,11 +1476,27 @@
     initAiCheckButton();
     initShortcuts();
     initGlobalButtons();
+    var lastSessionTouch = 0;
+    function touchSession() {
+      if (Date.now() - lastSessionTouch < 60000) return;
+      lastSessionTouch = Date.now();
+      api('session_touch', {}).catch(function () {});
+    }
+    document.addEventListener('pointerdown', touchSession, {passive:true});
+    document.addEventListener('keydown', touchSession);
+    $('#homeVoice').addEventListener('click', function () { VoiceAI.open(); VoiceAI.startRecord(); });
+    $('#homeTaskDetails').addEventListener('click', function () { openTaskForm(null, {title: $('#homeTaskTitle').value.trim()}); });
+    $('#homeTaskForm').addEventListener('submit', function (e) {
+      e.preventDefault(); var input = $('#homeTaskTitle'), title = input.value.trim(); if (!title) return;
+      var btn = this.querySelector('[type=submit]'); btn.disabled = true;
+      api('task_create', {title:title, assigned_to:APP.user.id}).then(function (r) { input.value = ''; toast(r.message || 'تسک ثبت شد.'); loadDashboard(); }).catch(function (err) { toast(err.message, 'error'); }).finally(function () { btn.disabled = false; });
+    });
 
     VoiceAI.init({
       api: api,
       users: APP.users,
       projects: APP.projects,
+      isManager: APP.user.is_manager,
       autoCreate: false,
       onCreated: function (res) {
         var count = (res.tasks || res.ids || []).length;
