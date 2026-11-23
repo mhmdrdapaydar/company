@@ -105,12 +105,12 @@ if ($type === 'tasks') {
              ORDER BY t.due_date ASC, t.id DESC'
         );
     }
-    $headers = ['کد تسک', 'عنوان', 'وضعیت', 'اولویت', 'پیشرفت (%)', 'مسئول', 'ایجادکننده', 'پروژه', 'تاریخ شروع (شمسی)', 'سررسید (شمسی)', 'ساعت سررسید', 'زمان تخمینی', 'دسته‌بندی', 'منشأ ایجاد'];
+    $headers = ['کد تسک', 'عنوان', 'وضعیت', 'اولویت', 'پیشرفت (%)', 'مسئول', 'ایجادکننده', 'تاریخ شروع (شمسی)', 'سررسید (شمسی)', 'ساعت سررسید', 'زمان تخمینی', 'دسته‌بندی', 'منشأ ایجاد'];
     $rows = [];
     foreach ($rowsDb as $r) {
         $rows[] = [
             $r['task_code'], $r['title'], task_status_label((string) $r['status']), task_priority_label((string) $r['priority']),
-            fa_digits((int) $r['progress']), $r['assignee_name'] ?? '', $r['creator_name'] ?? '', $r['project_name'] ?? '',
+            fa_digits((int) $r['progress']), $r['assignee_name'] ?? '', $r['creator_name'] ?? '',
             Jalali::toDateString($r['start_date'], true), Jalali::toDateString($r['due_date'], true),
             $r['due_time'] ? fa_digits($r['due_time']) : '', format_minutes_fa((int) $r['estimated_minutes']),
             $r['category'] ?? '', ($r['created_via'] === 'voice_ai' ? 'تسک صوتی هوش مصنوعی' : 'دستی'),
@@ -125,12 +125,12 @@ if ($type === 'employees') {
     $rowsDb = Database::fetchAll(
         'SELECT u.*, d.name AS department_name FROM users u LEFT JOIN departments d ON d.id = u.department_id ORDER BY u.id ASC'
     );
-    $headers = ['کد پرسنلی', 'نام و نام خانوادگی', 'نام کاربری', 'ایمیل', 'تلفن', 'نقش', 'سمت', 'واحد سازمانی', 'تاریخ استخدام (شمسی)', 'وضعیت', 'آخرین ورود (شمسی)'];
+    $headers = ['کد پرسنلی', 'نام و نام خانوادگی', 'نام کاربری', 'ایمیل', 'تلفن', 'نقش', 'سمت', 'تاریخ استخدام (شمسی)', 'وضعیت', 'آخرین ورود (شمسی)'];
     $rows = [];
     foreach ($rowsDb as $r) {
         $rows[] = [
             $r['employee_code'], $r['full_name'], $r['username'], $r['email'] ?? '', $r['phone'] ?? '',
-            user_role_label((string) $r['role']), $r['position_title'] ?? '', $r['department_name'] ?? '',
+            user_role_label((string) $r['role']), $r['position_title'] ?? '',
             Jalali::toDateString($r['hire_date'], true), ((int) $r['is_active'] === 1 ? 'فعال' : 'غیرفعال'),
             $r['last_login_at'] ? Jalali::toDateTimeHuman($r['last_login_at']) : '—',
         ];

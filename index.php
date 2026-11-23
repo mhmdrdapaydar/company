@@ -12,7 +12,7 @@ $uid         = (int) $user['id'];
 $isAdmin     = Auth::isAdmin();
 $isManager   = Auth::isManager();
 $companyName = get_setting('company_name', APP_NAME);
-$slogan      = get_setting('company_slogan', 'سامانه یکپارچه مدیریت تسک‌ها و پروژه‌ها');
+$slogan      = get_setting('company_slogan', 'سامانه یکپارچه مدیریت تسک‌ها');
 $todayHuman  = Jalali::toHuman(today_date(), true, true);
 $todayJalali = Jalali::toDateString(today_date(), true);
 $nowTime     = fa_digits(date('H:i'));
@@ -37,7 +37,7 @@ $theme       = 'light';
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="assets/icons/app-192.png">
 <meta name="csrf-token" content="<?= e($csrf) ?>">
-<meta name="description" content="پنل مدیریت شرکت، تسک‌ها، پروژه‌ها و دستیار صوتی هوش مصنوعی فارسی">
+<meta name="description" content="پنل مدیریت شرکت، تسک‌ها و دستیار صوتی هوش مصنوعی فارسی">
 <title><?= e($companyName) ?> — پنل مدیریت شرکت</title>
 <link rel="stylesheet" href="assets/css/app.css?v=<?= e(APP_VERSION) ?>">
 </head>
@@ -61,10 +61,10 @@ $theme       = 'light';
       <a href="#dashboard" class="active" data-section="dashboard"><span>📊</span> داشبورد</a>
       <a href="#tasks" data-section="tasks"><span>🗂️</span> تسک‌ها</a>
       <a href="#calendar" data-section="calendar"><span>📅</span> تقویم شمسی</a>
-      <a href="#projects" data-section="projects"><span>🚀</span> پروژه‌ها</a>
+
       <?php if ($isManager): ?>
       <a href="#employees" data-section="employees"><span>👥</span> کارمندان</a>
-      <a href="#departments" data-section="departments"><span>🏢</span> واحدهای سازمانی</a>
+
       <?php endif; ?>
       <a href="#announcements" data-section="announcements"><span>📢</span> اطلاعیه‌ها</a>
       <a href="#notifications" data-section="notifications"><span>🔔</span> اعلان‌ها<span id="notifNavBadge" class="nav-badge"<?= $unread > 0 ? '' : ' style="display:none"' ?>><?= e(fa_digits($unread)) ?></span></a>
@@ -84,7 +84,7 @@ $theme       = 'light';
       <div class="avatar" style="background:<?= e($avatarColor) ?>"><?= e($initials) ?></div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string) $user['full_name']) ?></div>
-        <div class="small muted"><?= e($jobTitle) ?> • <?= e($deptName) ?></div>
+        <div class="small muted"><?= e($jobTitle) ?></div>
       </div>
     </div>
   </aside>
@@ -186,12 +186,6 @@ $theme       = 'light';
               <option value="medium">متوسط</option>
               <option value="low">کم</option>
             </select>
-            <select id="taskProjectFilter">
-              <option value="">همه پروژه‌ها</option>
-              <?php foreach ($projectsAll as $p): ?>
-              <option value="<?= e((string) $p['id']) ?>"><?= e((string) $p['name']) ?></option>
-              <?php endforeach; ?>
-            </select>
             <?php if ($isManager): ?>
             <select id="taskUserFilter">
               <option value="">همه کارمندان</option>
@@ -229,40 +223,22 @@ $theme       = 'light';
         </div>
       </section>
 
-      <!-- ================= پروژه‌ها ================= -->
-      <section class="section" id="section-projects">
-        <div class="toolbar">
-          <h3 style="flex:1">لیست پروژه‌ها</h3>
-          <?php if ($isManager): ?><button class="btn btn-primary btn-sm" id="btnNewProject">➕ پروژه جدید</button><?php endif; ?>
-        </div>
-        <div class="grid grid-3" id="projectsGrid"><div class="loading"><div class="spinner"></div></div></div>
-      </section>
-
       <?php if ($isManager): ?>
       <!-- ================= کارمندان ================= -->
       <section class="section" id="section-employees">
         <div class="toolbar">
-          <div class="search"><input type="text" id="empSearch" placeholder="جستجوی کارمند بر اساس نام، کد پرسنلی، سمت یا واحد..."><span>🔍</span></div>
+          <div class="search"><input type="text" id="empSearch" placeholder="جستجوی کارمند بر اساس نام، کد پرسنلی یا سمت..."><span>🔍</span></div>
           <button class="btn btn-primary btn-sm" id="btnNewEmployee">➕ معرفی کارمند جدید</button>
           <a class="btn btn-sm" href="export.php?type=employees&format=csv">📥 خروجی اکسل</a>
         </div>
         <div class="table-wrap">
           <table class="tbl">
             <thead>
-              <tr><th>کارمند</th><th>کد پرسنلی</th><th>سمت</th><th>واحد</th><th>نقش</th><th>تسک‌ها</th><th>وضعیت</th><th>آخرین ورود</th><th>عملیات</th></tr>
+              <tr><th>کارمند</th><th>کد پرسنلی</th><th>سمت</th><th>نقش</th><th>تسک‌ها</th><th>وضعیت</th><th>آخرین ورود</th><th>عملیات</th></tr>
             </thead>
-            <tbody id="employeesBody"><tr><td colspan="9"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+            <tbody id="employeesBody"><tr><td colspan="8"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
           </table>
         </div>
-      </section>
-
-      <!-- ================= واحدها ================= -->
-      <section class="section" id="section-departments">
-        <div class="toolbar">
-          <h3 style="flex:1">واحدهای سازمانی</h3>
-          <button class="btn btn-primary btn-sm" id="btnNewDepartment">➕ واحد جدید</button>
-        </div>
-        <div class="grid grid-3" id="departmentsGrid"><div class="loading"><div class="spinner"></div></div></div>
       </section>
       <?php endif; ?>
 
@@ -327,7 +303,6 @@ $theme       = 'light';
                 <dt>کد پرسنلی</dt><dd><?= e((string) $user['employee_code']) ?></dd>
                 <dt>نام کاربری</dt><dd><?= e((string) $user['username']) ?></dd>
                 <dt>نقش</dt><dd><?= e($roleLabel) ?></dd>
-                <dt>واحد سازمانی</dt><dd><?= e($deptName) ?></dd>
                 <dt>تاریخ استخدام</dt><dd><?= e(Jalali::toHuman($user['hire_date'] ?? null, true, true)) ?></dd>
                 <dt>آخرین ورود</dt><dd><?= e($user['last_login_at'] ? Jalali::toDateTimeHuman((string) $user['last_login_at']) : '—') ?></dd>
               </dl>
@@ -426,10 +401,6 @@ $theme       = 'light';
           <?php foreach ($assignables as $a): ?>
           <option value="<?= e((string) $a['id']) ?>" <?= (int) $a['id'] === $uid ? 'selected' : '' ?>><?= e((string) $a['full_name']) ?></option>
           <?php endforeach; ?>
-        </select></label>
-        <label class="field"><span>پروژه</span><select id="tfProject">
-          <option value="">بدون پروژه</option>
-          <?php foreach ($projectsAll as $p): ?><option value="<?= e((string) $p['id']) ?>"><?= e((string) $p['name']) ?></option><?php endforeach; ?>
         </select></label>
         <label class="field"><span>وضعیت</span><select id="tfStatus">
           <option value="todo">در انتظار</option><option value="in_progress">در حال انجام</option>

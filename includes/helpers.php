@@ -284,7 +284,7 @@ function user_role_label(string $role): string
 {
     return match ($role) {
         'admin'    => 'مدیر شرکت',
-        'manager'  => 'سرپرست واحد',
+        'manager'  => 'مدیر',
         'employee' => 'کارمند',
         default    => $role,
     };

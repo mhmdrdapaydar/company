@@ -45,10 +45,7 @@
     build: function () {
       if (document.getElementById('modalVoice')) return;
       var users = (this.options.users || []).map(function (u) {
-        return '<option value="' + u.id + '">' + esc(u.full_name) + (u.department_name ? ' — ' + esc(u.department_name) : '') + '</option>';
-      }).join('');
-      var projects = (this.options.projects || []).map(function (p) {
-        return '<option value="' + p.id + '">' + esc(p.name) + '</option>';
+        return '<option value="' + u.id + '">' + esc(u.full_name) + '</option>';
       }).join('');
 
       var html = '' +
@@ -58,7 +55,7 @@
         '      <h3>🎙️ دستیار صوتی هوش مصنوعی</h3>' +
         '      <button class="icon-btn" data-voice-close title="بستن">✕</button>' +
         '    </div>' +
-        '    <div class="alert alert-info small">✨ به فارسی صحبت کنید؛ مثلاً: «فردا ساعت ۱۰ صبح جلسه با تیم بازاریابی برای پروژه وب‌سایت، اولویت بالا، با سارا». هوش مصنوعی خودش موضوع، روز شمسی، ساعت، مسئول و زیرتسک‌ها را تشخیص می‌دهد.</div>' +
+        '    <div class="alert alert-info small">✨ به فارسی صحبت کنید؛ مثلاً: «فردا ساعت ۱۰ صبح جلسه با تیم بازاریابی، اولویت بالا، با سارا». هوش مصنوعی خودش موضوع، روز شمسی، ساعت، مسئول و زیرتسک‌ها را تشخیص می‌دهد.</div>' +
         '    <div class="voice-recorder">' +
         '      <canvas class="wave-canvas" id="waveCanvas" width="800" height="90"></canvas>' +
         '      <div class="rec-timer" id="recTimer">۰۰:۰۰</div>' +
@@ -77,7 +74,7 @@
         '    </div>' +
         '    <label class="field">' +
         '      <span>متن فرمان صوتی (قابل ویرایش)</span>' +
-        '      <textarea id="voiceTranscript" rows="3" placeholder="مثلاً: پس‌فردا ساعت ۹ و نیم صبح تماس با مشتری برای پروژه فروش، اولویت فوری، زیرتسک: آماده‌سازی فایل قیمت، ارسال ایمیل پیگیری"></textarea>' +
+        '      <textarea id="voiceTranscript" rows="3" placeholder="مثلاً: پس‌فردا ساعت ۹ و نیم صبح تماس با مشتری، اولویت فوری، زیرتسک: آماده‌سازی فایل قیمت، ارسال ایمیل پیگیری"></textarea>' +
         '    </label>' +
         '    <div class="checkline">' +
         '      <input type="checkbox" id="voiceAutoCreate">' +
@@ -115,7 +112,6 @@
         '        </div>' +
         '        <div class="form-row">' +
         '          <label class="field"><span>مسئول انجام</span><select data-f="assigned_to">' + users + '</select></label>' +
-        '          <label class="field"><span>پروژه</span><select data-f="project_id"><option value="">بدون پروژه</option>' + projects + '</select></label>' +
         '        </div>' +
         '        <label class="field"><span>زیرتسک‌ها (هر خط یک مورد)</span><textarea data-f="subtasks" rows="2"></textarea></label>' +
         '        <label class="field"><span>توضیحات</span><textarea data-f="description" rows="2"></textarea></label>' +
@@ -809,7 +805,6 @@
         f('priority').value = t.priority || 'medium';
         f('estimated_minutes').value = t.estimated_minutes || 60;
         if (t.assigned_to) f('assigned_to').value = String(t.assigned_to);
-        f('project_id').value = t.project_id ? String(t.project_id) : '';
         f('subtasks').value = (t.subtasks || []).join('\n');
         f('description').value = t.description || '';
         node.querySelector('[data-badge="date"]').textContent = '📅 ' + (t.due_date_human || '—') + (t.due_time_fa ? ' — ساعت ' + t.due_time_fa : '');
@@ -840,7 +835,6 @@
           due_time: f('due_time'),
           priority: f('priority'),
           assigned_to: Number(f('assigned_to')) || 0,
-          project_id: f('project_id') ? Number(f('project_id')) : null,
           estimated_minutes: Number(f('estimated_minutes')) || 0,
           category: orig.category || 'عمومی',
           tags: orig.tags || '',

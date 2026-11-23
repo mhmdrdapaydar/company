@@ -139,7 +139,7 @@
   /* ---------------- ناوبری ---------------- */
   var TITLES = {
     dashboard: 'داشبورد', tasks: 'مدیریت تسک‌ها', calendar: 'تقویم شمسی',
-    projects: 'پروژه‌ها', employees: 'کارمندان', departments: 'واحدهای سازمانی',
+    employees: 'کارمندان',
     announcements: 'اطلاعیه‌ها',
     notifications: 'اعلان‌ها', activity: 'گزارش فعالیت‌ها', profile: 'پروفایل من', settings: 'تنظیمات سیستم'
   };
@@ -163,9 +163,7 @@
       case 'dashboard': loadDashboard(); break;
       case 'tasks': loadTasks(); break;
       case 'calendar': if (!state.calendar) loadCalendar(); break;
-      case 'projects': loadProjects(); break;
       case 'employees': loadEmployees(); break;
-      case 'departments': loadDepartments(); break;
       case 'announcements': loadAnnouncements(); break;
       case 'notifications': loadNotifications(); break;
       case 'activity': loadActivity(); break;
@@ -223,7 +221,7 @@
       (APP.user.is_manager ?
         '<div class="card"><h3>🏢 وضعیت شرکت</h3>' +
         '<div class="small">کارمندان فعال: <strong>' + FAT(d.team_count) + '</strong></div>' +
-        '<div class="small">پروژه‌های فعال: <strong>' + FAT(d.project_count) + '</strong></div></div>' : '');
+        '</div>' : '');
     var box = $('#dashStats');
     if (APP.user.is_manager) {
       box.insertAdjacentHTML('beforeend', '');
@@ -253,7 +251,7 @@
     wrap.innerHTML = src.slice(0, 6).map(function (t) {
       return '<div class="task-list-row" data-task="' + t.id + '">' +
         '<div class="grow"><h5>' + esc(t.title) + '</h5>' +
-        '<div class="small muted">👤 ' + esc(t.assignee_name || '—') + (t.project_name ? ' • ' + esc(t.project_name) : '') + '</div></div>' +
+        '<div class="small muted">👤 ' + esc(t.assignee_name || '—') + '</div></div>' +
         dueBadge(t) + '</div>';
     }).join('');
     $$('#dashUpcoming .task-list-row').forEach(function (row) {
@@ -372,7 +370,6 @@
     if (s) q.search = s;
     var st = $('#taskStatusFilter').value; if (st) q.status = st;
     var pr = $('#taskPriorityFilter').value; if (pr) q.priority = pr;
-    var pj = $('#taskProjectFilter').value; if (pj) q.project_id = pj;
     var uf = $('#taskUserFilter'); if (uf && uf.value) q.assigned_to = uf.value;
     return q;
   }
@@ -416,7 +413,6 @@
         '<div class="grow">' +
         '<h5>' + esc(t.title) + (t.created_via === 'voice_ai' ? ' <span title="ثبت با هوش مصنوعی">🎙️</span>' : '') + '</h5>' +
         '<div class="small muted">' + esc(t.task_code) + ' • ' + esc(t.assignee_name || '—') +
-        (t.project_name ? ' • 🚀 ' + esc(t.project_name) : '') +
         (t.subtasks_total ? ' • ☑️ ' + FAT(t.subtasks_done) + '/' + FAT(t.subtasks_total) : '') + '</div></div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end">' +
         statusBadge(t.status) + priorityBadge(t.priority) + dueBadge(t) + '</div>' +
@@ -476,7 +472,7 @@
   }
   function kanbanCard(t) {
     return '<div class="task-card" data-task="' + t.id + '">' +
-      '<div class="tc-top">' + priorityBadge(t.priority) + (t.project_name ? '<span class="badge badge-todo">🚀 ' + esc(t.project_name) + '</span>' : '') + '</div>' +
+      '<div class="tc-top">' + priorityBadge(t.priority) + '</div>' +
       '<h5>' + esc(t.title) + (t.created_via === 'voice_ai' ? ' 🎙️' : '') + '</h5>' +
       '<div class="tc-meta">' + dueBadge(t) + (t.subtasks_total ? '<span>☑️ ' + FAT(t.subtasks_done) + '/' + FAT(t.subtasks_total) + '</span>' : '') + '</div>' +
       (t.progress > 0 ? '<div class="progress" style="margin-top:8px"><div style="width:' + t.progress + '%"></div></div>' : '') +
@@ -489,7 +485,7 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(loadTasks, 380);
     });
-    ['#taskScope', '#taskStatusFilter', '#taskPriorityFilter', '#taskProjectFilter', '#taskUserFilter'].forEach(function (s) {
+    ['#taskScope', '#taskStatusFilter', '#taskPriorityFilter', '#taskUserFilter'].forEach(function (s) {
       var el = $(s);
       if (el) el.addEventListener('change', loadTasks);
     });
@@ -512,7 +508,6 @@
     $('#tfTitle').value = task ? task.title : (prefill && prefill.title) || '';
     $('#tfDescription').value = task ? (task.description || '') : (prefill && prefill.description) || '';
     $('#tfAssignee').value = String(task ? task.assigned_to : (prefill && prefill.assigned_to) || APP.user.id);
-    $('#tfProject').value = task && task.project_id ? String(task.project_id) : (prefill && prefill.project_id) || '';
     $('#tfStatus').value = task ? task.status : 'todo';
     $('#tfPriority').value = task ? task.priority : (prefill && prefill.priority) || 'medium';
     $('#tfDueDate').value = task && task.due_date ? J.gregorianToJalaliInput(task.due_date) : (prefill && prefill.due_date_jalali) || APP.today.jalali;
@@ -563,7 +558,6 @@
         title: $('#tfTitle').value.trim(),
         description: $('#tfDescription').value.trim(),
         assigned_to: Number($('#tfAssignee').value),
-        project_id: $('#tfProject').value ? Number($('#tfProject').value) : null,
         status: $('#tfStatus').value,
         priority: $('#tfPriority').value,
         due_date: dueG || '',
@@ -863,112 +857,29 @@
     });
   }
 
-  /* ================= پروژه‌ها ================= */
-  function loadProjects(silent) {
-    silent = silent === true;
-    if (!silent) $('#projectsGrid').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    api('projects_list').then(function (res) {
-      if (silent && (!canRefreshLive() || state.section !== 'projects')) return;
-      state.projects = res.projects || [];
-      renderProjects();
-    }).catch(function (err) { if (!silent) $('#projectsGrid').innerHTML = emptyState('⚠️', err.message); });
-  }
-  function renderProjects() {
-    var grid = $('#projectsGrid');
-    if (!state.projects.length) { grid.innerHTML = emptyState('🚀', 'پروژه‌ای ثبت نشده است.'); return; }
-    grid.innerHTML = state.projects.map(function (p) {
-      var st = { active: 'فعال', paused: 'متوقف', done: 'تکمیل‌شده', archived: 'بایگانی' }[p.status] || p.status;
-      return '<div class="card" style="border-top:4px solid ' + esc(p.color || '#0284c7') + '">' +
-        '<div style="display:flex;gap:8px;align-items:flex-start"><h3 style="flex:1;font-size:15px">' + esc(p.name) + '</h3><span class="badge badge-' + esc(p.status) + '">' + esc(st) + '</span></div>' +
-        '<div class="small muted" style="margin-bottom:8px">کد ' + esc(p.code) + (p.department_name ? ' • 🏢 ' + esc(p.department_name) : '') + '</div>' +
-        (p.description ? '<p class="small" style="margin:0 0 10px;color:var(--muted)">' + esc(p.description).slice(0, 140) + '</p>' : '') +
-        '<div class="progress" style="margin-bottom:6px"><div style="width:' + (p.progress || 0) + '%"></div></div>' +
-        '<div class="small muted" style="display:flex;justify-content:space-between;margin-bottom:8px"><span>تیک‌ها: ' + FAT(p.tasks_done) + '/' + FAT(p.tasks_total) + '</span><span>' + FAT(p.progress || 0) + '٪</span></div>' +
-        '<div class="small muted">📅 مهلت: ' + esc(p.due_human || '—') + '</div>' +
-        (p.owner_name ? '<div class="small muted">👤 مسئول: ' + esc(p.owner_name) + '</div>' : '') +
-        '<div class="toolbar" style="margin-top:10px;margin-bottom:0">' +
-        '<button class="btn btn-sm" data-proj-tasks="' + p.id + '">🗂️ تسک‌ها</button>' +
-        (APP.user.is_manager ? '<button class="btn btn-sm" data-proj-edit="' + p.id + '">✏️ ویرایش</button><button class="btn btn-sm btn-danger" data-proj-del="' + p.id + '">🗑️</button>' : '') +
-        '</div></div>';
-    }).join('');
-    $$('[data-proj-tasks]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = this.getAttribute('data-proj-tasks');
-        $('#taskProjectFilter').value = id;
-        go('tasks');
-      });
-    });
-    $$('[data-proj-edit]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var p = state.projects.filter(function (x) { return x.id === Number(this.getAttribute('data-proj-edit')); }.bind(this))[0];
-        projectModal(p);
-      });
-    });
-    $$('[data-proj-del]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        if (!confirm('پروژه حذف شود؟')) return;
-        api('project_delete', { id: Number(this.getAttribute('data-proj-del')) }).then(function (r) { toast(r.message || 'حذف شد.'); loadProjects(); }).catch(function (e) { toast(e.message, 'error'); });
-      });
-    });
-  }
-
-  function projectModal(project) {
-    var p = project || {};
-    openGeneric(project ? '✏️ ویرایش پروژه' : '🚀 پروژه جدید', '' +
-      '<label class="field"><span>نام پروژه *</span><input type="text" id="pjName" value="' + esc(p.name || '') + '"></label>' +
-      '<label class="field"><span>توضیحات</span><textarea id="pjDesc" rows="2">' + esc(p.description || '') + '</textarea></label>' +
-      '<div class="form-row"><label class="field"><span>کد پروژه</span><input type="text" id="pjCode" value="' + esc(p.code || '') + '" ' + (project ? 'disabled' : '') + '></label>' +
-      '<label class="field"><span>رنگ</span><input type="color" id="pjColor" value="' + esc(p.color || '#0284c7') + '" style="height:42px;padding:4px"></label></div>' +
-      '<div class="form-row"><label class="field"><span>واحد</span><select id="pjDept"><option value="">—</option>' + APP.departments.map(function (d) { return '<option value="' + d.id + '"' + (p.department_id === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select></label>' +
-      '<label class="field"><span>وضعیت</span><select id="pjStatus">' + [['active', 'فعال'], ['paused', 'متوقف'], ['done', 'تکمیل‌شده'], ['archived', 'بایگانی']].map(function (x) { return '<option value="' + x[0] + '"' + (p.status === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label></div>' +
-      '<div class="form-row"><label class="field"><span>تاریخ شروع (شمسی)</span><input type="text" id="pjStart" dir="ltr" value="' + esc(p.start_date ? J.gregorianToJalaliInput(p.start_date) : APP.today.jalali) + '"></label>' +
-      '<label class="field"><span>مهلت پایان (شمسی)</span><input type="text" id="pjDue" dir="ltr" value="' + esc(p.due_date ? J.gregorianToJalaliInput(p.due_date) : '') + '"></label></div>' +
-      '<button class="btn btn-primary btn-block" id="pjSave">💾 ذخیره پروژه</button>');
-    $('#pjSave').addEventListener('click', function () {
-      var due = $('#pjDue').value.trim();
-      var dueG = due ? J.parseToGregorian(due) : null;
-      if (due && !dueG) { toast('تاریخ مهلت نامعتبر است.', 'error'); return; }
-      var payload = {
-        name: $('#pjName').value.trim(), description: $('#pjDesc').value.trim(),
-        color: $('#pjColor').value, department_id: $('#pjDept').value || null,
-        status: $('#pjStatus').value, start_date: J.parseToGregorian($('#pjStart').value.trim()) || '',
-        due_date: dueG || ''
-      };
-      if (!payload.name) { toast('نام پروژه الزامی است.', 'error'); return; }
-      if (!project) payload.code = $('#pjCode').value.trim();
-      else payload.id = project.id;
-      api(project ? 'project_update' : 'project_create', payload).then(function (r) {
-        toast(r.message || 'ذخیره شد.');
-        closeGeneric();
-        loadProjects();
-      }).catch(function (e) { toast(e.message, 'error'); });
-    });
-  }
-
   /* ================= کارمندان ================= */
   function loadEmployees() {
     api('users_list').then(function (res) {
       state.users = res.users || [];
       renderEmployees();
     }).catch(function (err) {
-      $('#employeesBody').innerHTML = '<tr><td colspan="9" class="center muted">' + esc(err.message) + '</td></tr>';
+      $('#employeesBody').innerHTML = '<tr><td colspan="8" class="center muted">' + esc(err.message) + '</td></tr>';
     });
   }
   function renderEmployees() {
     var q = ($('#empSearch').value || '').trim();
     var rows = state.users.filter(function (u) {
       if (!q) return true;
-      var hay = (u.full_name + ' ' + u.employee_code + ' ' + (u.position_title || '') + ' ' + (u.department_name || '') + ' ' + u.username).toLowerCase();
+      var hay = (u.full_name + ' ' + u.employee_code + ' ' + (u.position_title || '') + ' ' + u.username).toLowerCase();
       return hay.indexOf(q.toLowerCase()) !== -1;
     });
     var body = $('#employeesBody');
-    if (!rows.length) { body.innerHTML = '<tr><td colspan="9" class="center muted">کارمندی یافت نشد.</td></tr>'; return; }
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="center muted">کارمندی یافت نشد.</td></tr>'; return; }
     body.innerHTML = rows.map(function (u) {
       return '<tr>' +
         '<td><div style="display:flex;gap:8px;align-items:center">' + avatar(u.full_name, u.avatar_color, 'avatar-sm') + '<div><div style="font-weight:700">' + esc(u.full_name) + '</div><div class="small muted" dir="ltr">' + esc(u.username) + '</div></div></div></td>' +
         '<td><code>' + esc(u.employee_code) + '</code></td>' +
         '<td>' + esc(u.position_title || '—') + '</td>' +
-        '<td>' + esc(u.department_name || '—') + '</td>' +
         '<td><span class="badge ' + (u.role === 'admin' ? 'badge-urgent' : u.role === 'manager' ? 'badge-review' : 'badge-todo') + '">' + esc(u.role_label) + '</span></td>' +
         '<td>' + FAT(u.tasks_open) + ' باز / ' + FAT(u.tasks_count) + '</td>' +
         '<td>' + (u.is_active ? '<span class="badge badge-active">فعال</span>' : '<span class="badge badge-archived">غیرفعال</span>') + '</td>' +
@@ -1009,10 +920,10 @@
       '<div class="form-row"><label class="field"><span>ایمیل</span><input type="email" id="emEmail" dir="ltr" value="' + esc(u.email || '') + '"></label>' +
       '<label class="field"><span>تلفن</span><input type="text" id="emPhone" dir="ltr" value="' + esc(u.phone || '') + '"></label></div>' +
       '<div class="form-row"><label class="field"><span>سمت سازمانی</span><input type="text" id="emPosition" value="' + esc(u.position_title || '') + '" placeholder="مثلاً کارشناس فروش"></label>' +
-      '<label class="field"><span>واحد سازمانی</span><select id="emDept"><option value="">—</option>' + APP.departments.map(function (d) { return '<option value="' + d.id + '"' + (u.department_id === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select></label></div>' +
+      '</div>' +
       '<div class="form-row"><label class="field"><span>نقش سیستمی</span><select id="emRole">' +
       '<option value="employee"' + (u.role === 'employee' ? ' selected' : '') + '>کارمند</option>' +
-      '<option value="manager"' + (u.role === 'manager' ? ' selected' : '') + '>سرپرست واحد</option>' +
+      '<option value="manager"' + (u.role === 'manager' ? ' selected' : '') + '>مدیر</option>' +
       (APP.user.is_admin ? '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') + '>مدیر شرکت</option>' : '') +
       '</select></label>' +
       '<label class="field"><span>تاریخ استخدام (شمسی)</span><input type="text" id="emHire" dir="ltr" value="' + esc(u.hire_date ? J.gregorianToJalaliInput(u.hire_date) : APP.today.jalali) + '"></label></div>' +
@@ -1030,7 +941,6 @@
         email: $('#emEmail').value.trim(),
         phone: $('#emPhone').value.trim(),
         position_title: $('#emPosition').value.trim(),
-        department_id: $('#emDept').value || null,
         role: $('#emRole').value,
         hire_date: hireG || '',
         bio: $('#emBio').value.trim()
@@ -1051,57 +961,6 @@
         toast(r.message || 'ذخیره شد.');
         closeGeneric();
         loadEmployees();
-      }).catch(function (e) { toast(e.message, 'error'); });
-    });
-  }
-
-  /* ================= واحدها ================= */
-  function loadDepartments() {
-    api('departments_list').then(function (res) {
-      state.departments = res.departments || [];
-      APP.departments = state.departments.map(function (d) { return { id: d.id, name: d.name }; });
-      var grid = $('#departmentsGrid');
-      if (!state.departments.length) { grid.innerHTML = emptyState('🏢', 'واحدی ثبت نشده است.'); return; }
-      grid.innerHTML = state.departments.map(function (d) {
-        return '<div class="card" style="border-right:5px solid ' + esc(d.color || '#0f766e') + '">' +
-          '<h3 style="font-size:15px">' + esc(d.name) + '</h3>' +
-          (d.description ? '<p class="small muted">' + esc(d.description) + '</p>' : '') +
-          '<div class="small">👥 اعضا: <strong>' + FAT(d.members_count) + '</strong></div>' +
-          '<div class="small">🚀 پروژه‌های فعال: <strong>' + FAT(d.projects_count) + '</strong></div>' +
-          '<div class="small">👤 سرپرست: <strong>' + esc(d.manager_name || '—') + '</strong></div>' +
-          '<div class="toolbar" style="margin-top:10px;margin-bottom:0"><button class="btn btn-sm" data-dept-edit="' + d.id + '">✏️ ویرایش</button>' +
-          '<button class="btn btn-sm btn-danger" data-dept-del="' + d.id + '">🗑️</button></div></div>';
-      }).join('');
-      $$('[data-dept-edit]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          var id = Number(this.getAttribute('data-dept-edit'));
-          departmentModal(state.departments.filter(function (d) { return d.id === id; })[0]);
-        });
-      });
-      $$('[data-dept-del]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          if (!confirm('واحد حذف شود؟')) return;
-          api('department_delete', { id: Number(this.getAttribute('data-dept-del')) }).then(function (r) { toast(r.message || 'حذف شد.'); loadDepartments(); }).catch(function (e) { toast(e.message, 'error'); });
-        });
-      });
-    }).catch(function (err) { toast(err.message, 'error'); });
-  }
-  function departmentModal(dept) {
-    var d = dept || {};
-    openGeneric(dept ? '✏️ ویرایش واحد' : '🏢 واحد جدید', '' +
-      '<label class="field"><span>نام واحد *</span><input type="text" id="dpName" value="' + esc(d.name || '') + '"></label>' +
-      '<label class="field"><span>توضیحات</span><input type="text" id="dpDesc" value="' + esc(d.description || '') + '"></label>' +
-      '<div class="form-row"><label class="field"><span>رنگ</span><input type="color" id="dpColor" value="' + esc(d.color || '#0f766e') + '" style="height:42px;padding:4px"></label>' +
-      '<label class="field"><span>سرپرست</span><select id="dpManager"><option value="">—</option>' + APP.users.map(function (u) { return '<option value="' + u.id + '"' + (d.manager_id === u.id ? ' selected' : '') + '>' + esc(u.full_name) + '</option>'; }).join('') + '</select></label></div>' +
-      '<button class="btn btn-primary btn-block" id="dpSave">💾 ذخیره</button>');
-    $('#dpSave').addEventListener('click', function () {
-      var payload = { name: $('#dpName').value.trim(), description: $('#dpDesc').value.trim(), color: $('#dpColor').value, manager_id: $('#dpManager').value || null };
-      if (!payload.name) { toast('نام واحد الزامی است.', 'error'); return; }
-      if (dept) payload.id = dept.id;
-      api(dept ? 'department_update' : 'department_create', payload).then(function (r) {
-        toast(r.message || 'ذخیره شد.');
-        closeGeneric();
-        loadDepartments();
       }).catch(function (e) { toast(e.message, 'error'); });
     });
   }
@@ -1134,7 +993,7 @@
       '<label class="field"><span>عنوان *</span><input type="text" id="anTitle"></label>' +
       '<label class="field"><span>متن اطلاعیه *</span><textarea id="anBody" rows="4"></textarea></label>' +
       '<div class="form-row"><label class="field"><span>اهمیت</span><select id="anPrio"><option value="normal">عادی</option><option value="important">مهم</option><option value="urgent">فوری</option></select></label>' +
-      '<label class="field"><span>واحد هدف</span><select id="anDept"><option value="">همه کارمندان</option>' + APP.departments.map(function (d) { return '<option value="' + d.id + '">' + esc(d.name) + '</option>'; }).join('') + '</select></label></div>' +
+      '</div>' +
       '<label class="field"><span>معتبر تا تاریخ (شمسی، اختیاری)</span><input type="text" id="anExpires" dir="ltr" placeholder="۱۴۰۵/۱۲/۲۹"></label>' +
       '<div class="checkline"><input type="checkbox" id="anPinned"><label for="anPinned">سنجاق شود در بالای لیست</label></div>' +
       '<button class="btn btn-primary btn-block" id="anSave">📢 انتشار اطلاعیه</button>');
@@ -1144,7 +1003,7 @@
       if (exp && !expG) { toast('تاریخ انقضا نامعتبر است.', 'error'); return; }
       api('announcement_create', {
         title: $('#anTitle').value.trim(), body: $('#anBody').value.trim(),
-        priority: $('#anPrio').value, department_id: $('#anDept').value || '',
+        priority: $('#anPrio').value,
         is_pinned: $('#anPinned').checked ? 1 : 0, expires_at: expG || ''
       }).then(function (r) {
         toast(r.message || 'منتشر شد.');
@@ -1358,9 +1217,7 @@
       case 'dashboard': loadDashboard(); break;
       case 'tasks': loadTasks(true); break;
       case 'calendar': loadCalendar(state.calYear, state.calMonth, true); break;
-      case 'projects': loadProjects(true); break;
       case 'employees': loadEmployees(); break;
-      case 'departments': loadDepartments(); break;
       case 'announcements': loadAnnouncements(); break;
       case 'notifications': if (!notifPending) loadNotifications(); break;
       case 'activity': loadActivity(); break;
@@ -1376,7 +1233,6 @@
     items.forEach(function (item) {
       var option = document.createElement('option'); option.value = String(item.id);
       option.textContent = item.name || item.full_name || '';
-      if (item.department_name) option.textContent += ' — ' + item.department_name;
       fragment.appendChild(option);
     });
     select.replaceChildren(fragment);
@@ -1385,8 +1241,8 @@
   function refreshLiveReferences() {
     if (!canRefreshLive()) return;
     api('live_reference').then(function (data) {
-      if (!canRefreshLive() || !Array.isArray(data.users) || !Array.isArray(data.projects)) return;
-      var users = data.users, projects = data.projects;
+      if (!canRefreshLive() || !Array.isArray(data.users)) return;
+      var users = data.users;
       if (JSON.stringify(users.map(function (u) { return [u.id, u.full_name, u.department_name]; })) !==
           JSON.stringify((APP.users || []).map(function (u) { return [u.id, u.full_name, u.department_name]; }))) {
         APP.users = users;
@@ -1395,14 +1251,7 @@
         var template = document.getElementById('voiceTaskTpl');
         if (template && template.content) updateLiveSelect(template.content.querySelector('[data-f="assigned_to"]'), users, null);
       }
-      if (JSON.stringify(projects.map(function (p) { return [Number(p.id), p.name]; })) !==
-          JSON.stringify((APP.projects || []).map(function (p) { return [Number(p.id), p.name]; }))) {
-        APP.projects = projects;
-        updateLiveSelect($('#tfProject'), projects, 'بدون پروژه');
-        updateLiveSelect($('#taskProjectFilter'), projects, 'همه پروژه‌ها');
-        var tpl = document.getElementById('voiceTaskTpl');
-        if (tpl && tpl.content) updateLiveSelect(tpl.content.querySelector('[data-f="project_id"]'), projects, 'بدون پروژه');
-      }
+
     }).catch(function () {});
   }
   function initLiveView() {
@@ -1649,9 +1498,7 @@
         (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
       }
     });
-    $('#btnNewProject') && $('#btnNewProject').addEventListener('click', function () { projectModal(null); });
     $('#btnNewEmployee') && $('#btnNewEmployee').addEventListener('click', function () { employeeModal(null); });
-    $('#btnNewDepartment') && $('#btnNewDepartment').addEventListener('click', function () { departmentModal(null); });
     $('#btnNewAnnouncement') && $('#btnNewAnnouncement').addEventListener('click', announcementModal);
     $('#btnReadAll').addEventListener('click', function () {
       var btn = this;
