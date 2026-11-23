@@ -58,7 +58,8 @@ $theme       = 'light';
       </div>
     </div>
     <nav class="nav" id="mainNav">
-      <a href="#dashboard" class="active" data-section="dashboard"><span>📊</span> داشبورد</a>
+      <a href="#dashboard" class="active" data-section="dashboard"><span>🏠</span> صفحه اصلی</a>
+      <a href="#reports" data-section="reports"><span>📊</span> آمار و گزارش‌ها</a>
       <a href="#tasks" data-section="tasks"><span>🗂️</span> تسک‌ها</a>
       <a href="#calendar" data-section="calendar"><span>📅</span> تقویم شمسی</a>
 
@@ -80,6 +81,19 @@ $theme       = 'light';
       <a href="#" id="btnDesktopNotifications"><span>🔔</span> فعال‌سازی اعلان دستگاه</a>
       <a href="logout.php"><span>🚪</span> خروج از حساب</a>
     </nav>
+    <div class="sidebar-tools">
+      <div class="clock-box">
+        <div class="t" id="liveClock"><?= e($nowTime) ?></div>
+        <div class="d"><?= e($todayHuman) ?></div>
+      </div>
+      <button class="btn btn-primary" id="btnQuickVoice" title="ثبت تسک با صدا">🎙️ تسک صوتی</button>
+      <button class="btn" id="btnQuickTask" title="ثبت تسک جدید">➕ تسک جدید</button>
+      <button class="icon-btn" id="btnNotifBell" title="اعلان‌ها" style="position:relative">
+        🔔<span id="notifDot" class="badge badge-urgent" style="position:absolute;top:-6px;left:-6px;padding:0 6px;<?= $unread > 0 ? '' : 'display:none' ?>"><?= e(fa_digits($unread)) ?></span>
+      </button>
+      <button class="icon-btn" id="btnTheme" title="تغییر تم">🌙</button>
+      <a class="icon-btn" id="btnFullscreen" title="نمایش تمام‌صفحه" href="#" style="text-decoration:none">⛶</a>
+    </div>
     <div class="sidebar-user">
       <div class="avatar" style="background:<?= e($avatarColor) ?>"><?= e($initials) ?></div>
       <div style="flex:1;min-width:0">
@@ -93,40 +107,15 @@ $theme       = 'light';
   <div class="main">
     <header class="topbar">
       <button class="icon-btn menu-toggle" id="menuToggle" title="منو">☰</button>
-      <h1 id="pageTitle">داشبورد</h1>
+      <h1 id="pageTitle">صفحه اصلی</h1>
       <div class="spacer"></div>
-      <div class="clock-box">
-        <div class="t" id="liveClock"><?= e($nowTime) ?></div>
-        <div class="d"><?= e($todayHuman) ?></div>
-      </div>
-      <button class="btn btn-primary" id="btnQuickVoice" title="ثبت تسک با صدا">🎙️ تسک صوتی</button>
-      <button class="btn" id="btnQuickTask" title="ثبت تسک جدید">➕ تسک جدید</button>
-      <button class="icon-btn" id="btnNotifBell" title="اعلان‌ها" style="position:relative">
-        🔔<span id="notifDot" class="badge badge-urgent" style="position:absolute;top:-6px;left:-6px;padding:0 6px;<?= $unread > 0 ? '' : 'display:none' ?>"><?= e(fa_digits($unread)) ?></span>
-      </button>
-      <button class="icon-btn" id="btnTheme" title="تغییر تم">🌙</button>
-      <a class="icon-btn" id="btnFullscreen" title="نمایش تمام‌صفحه" href="#" style="text-decoration:none">⛶</a>
     </header>
 
     <main class="content">
-      <div id="notificationPermissionNotice" class="alert alert-info permission-notice hidden" role="status" aria-live="polite">
-        <div class="permission-notice-text">
-          <strong id="notificationPermissionTitle">🔔 فعال‌سازی اعلان دستگاه</strong>
-          <div id="notificationPermissionDescription" class="small"></div>
-        </div>
-        <button type="button" id="btnRequestNotificationPermission" class="btn btn-primary btn-sm">فعال‌سازی اعلان</button>
-      </div>
+
 
       <!-- ================= داشبورد ================= -->
       <section class="section active" id="section-dashboard">
-        <div class="card" style="margin-bottom:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-          <div class="avatar avatar-lg" style="background:<?= e($avatarColor) ?>"><?= e($initials) ?></div>
-          <div style="flex:1;min-width:220px">
-            <h2 style="font-size:18px">سلام <?= e((string) $user['full_name']) ?> 👋</h2>
-            <div class="small muted">امروز <?= e($todayHuman) ?> — خوش آمدید به <?= e($companyName) ?></div>
-          </div>
-        </div>
-
         <div class="card quick-capture">
           <form id="homeTaskForm" class="quick-capture-form">
             <label for="homeTaskTitle"><strong>ثبت سریع تسک</strong></label>
@@ -135,6 +124,9 @@ $theme       = 'light';
           <div class="quick-voice"><button type="button" id="homeVoice" class="quick-voice-button" aria-label="ضبط تسک صوتی">🎙️</button><span>ثبت با صدا</span></div>
         </div>
 
+      </section>
+
+      <section class="section" id="section-reports">
         <div class="grid grid-4" id="dashStats" style="margin-bottom:16px">
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
@@ -214,9 +206,10 @@ $theme       = 'light';
             <button class="btn btn-sm" id="calToday">امروز</button>
             <div class="spacer" style="flex:1"></div>
             <button class="btn btn-primary btn-sm" id="btnCalNewTask">➕ تسک در این ماه</button>
-            <span class="small muted">با کلیک روی هر روز تسک جدید با همان تاریخ ثبت کنید</span>
+            <span class="small muted">برای ثبت تسک روی روز و برای مشاهدهٔ تسک روی عنوان آن بزنید.</span>
           </div>
           <div class="cal-grid cal-grid-main" id="calGrid"><div class="loading"><div class="spinner"></div></div></div>
+          <section class="cal-agenda" id="calAgenda" aria-label="فهرست تسک‌های ماه" aria-live="polite"></section>
         </div>
       </section>
 
@@ -250,6 +243,13 @@ $theme       = 'light';
 
       <!-- ================= اعلان‌ها ================= -->
       <section class="section" id="section-notifications">
+      <div id="notificationPermissionNotice" class="alert alert-info permission-notice hidden" role="status" aria-live="polite">
+        <div class="permission-notice-text">
+          <strong id="notificationPermissionTitle">🔔 فعال‌سازی اعلان دستگاه</strong>
+          <div id="notificationPermissionDescription" class="small"></div>
+        </div>
+        <button type="button" id="btnRequestNotificationPermission" class="btn btn-primary btn-sm">فعال‌سازی اعلان</button>
+      </div>
         <div class="toolbar">
           <h3 style="flex:1">اعلان‌های من</h3>
           <button class="btn btn-sm" id="btnReadAll">✅ خواندن همه</button>

@@ -133,7 +133,7 @@
 
   /* ---------------- ناوبری ---------------- */
   var TITLES = {
-    dashboard: 'داشبورد', tasks: 'مدیریت تسک‌ها', calendar: 'تقویم شمسی',
+    dashboard: 'صفحه اصلی', reports: 'آمار و گزارش‌ها', tasks: 'مدیریت تسک‌ها', calendar: 'تقویم شمسی',
     employees: 'کارمندان',
     announcements: 'اطلاعیه‌ها',
     notifications: 'اعلان‌ها', activity: 'گزارش فعالیت‌ها', profile: 'پروفایل من', settings: 'تنظیمات سیستم'
@@ -155,7 +155,7 @@
 
   function loadSection(section) {
     switch (section) {
-      case 'dashboard': loadDashboard(); break;
+      case 'reports': loadDashboard(); break;
       case 'tasks': loadTasks(); break;
       case 'calendar': if (!state.calendar) loadCalendar(); break;
       case 'employees': loadEmployees(); break;
@@ -305,7 +305,7 @@
     ctx.fillStyle = text; ctx.fillText('تکمیل', w - 80, 15);
   }
   function rerenderCharts() {
-    if (state.section === 'dashboard' && state.dashboard) {
+    if (state.section === 'reports' && state.dashboard) {
       renderChart7d(state.dashboard.chart_7d || []);
     }
   }
@@ -410,7 +410,7 @@
           task.status = newStatus;
           renderKanban();
           toast('وضعیت تسک به «' + (COLS.filter(function (c) { return c.key === newStatus; })[0] || {}).title.replace(/^[^\s]+\s/, '') + '» تغییر کرد ✅');
-          if (state.section === 'dashboard') loadDashboard();
+          if (state.section === 'reports') loadDashboard();
         }).catch(function (err) { toast(err.message, 'error'); renderKanban(); });
       });
     });
@@ -500,7 +500,7 @@
         closeTaskForm();
         if (state.section === 'tasks') loadTasks();
         if (state.section === 'calendar') loadCalendar(state.calYear, state.calMonth);
-        if (state.section === 'dashboard') loadDashboard();
+        if (state.section === 'reports') loadDashboard();
         if (res.task && state.currentTaskId === res.task.id) openTask(res.task.id);
       }).catch(function (err) { toast(err.message, 'error'); })
         .finally(function () { btn.disabled = false; });
@@ -590,14 +590,14 @@
             toast('وضعیت: ' + (r.task ? r.task.status_label : next));
             renderTaskDrawer(t.id);
             if (state.section === 'tasks') loadTasks();
-            if (state.section === 'dashboard') loadDashboard();
+            if (state.section === 'reports') loadDashboard();
           }).catch(function (e) { toast(e.message, 'error'); });
         } else if (act === 'archive') {
           api('task_update', { id: t.id, is_archived: t.is_archived ? 0 : 1 }).then(function () {
             toast(t.is_archived ? 'تسک بازگردانی شد.' : 'تسک بایگانی شد.');
             closeDrawer();
             if (state.section === 'tasks') loadTasks();
-            if (state.section === 'dashboard') loadDashboard();
+            if (state.section === 'reports') loadDashboard();
           }).catch(function (e) { toast(e.message, 'error'); });
         } else if (act === 'delete') {
           if (!confirm('آیا از حذف این تسک مطمئن هستید؟ این عملیات قابل بازگشت نیست.')) return;
@@ -605,7 +605,7 @@
             toast(r.message || 'تسک حذف شد.');
             closeDrawer();
             if (state.section === 'tasks') loadTasks();
-            if (state.section === 'dashboard') loadDashboard();
+            if (state.section === 'reports') loadDashboard();
             if (state.section === 'calendar') loadCalendar(state.calYear, state.calMonth);
           }).catch(function (e) { toast(e.message, 'error'); });
         } else if (act === 'sub-add') {
@@ -694,14 +694,18 @@
     jy = jy || state.calYear || t[0];
     jm = jm || state.calMonth || t[1];
     state.calYear = jy; state.calMonth = jm;
-    if (!silent) $('#calGrid').innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>';
+    if (!silent) {
+      $('#calGrid').innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>';
+      $('#calAgenda').innerHTML = '';
+    }
     api('calendar_month', { jy: jy, jm: jm }).then(function (res) {
-      if (silent && (!canRefreshLive() || state.section !== 'calendar' || jy !== state.calYear || jm !== state.calMonth)) return;
+      if (jy !== state.calYear || jm !== state.calMonth || (silent && (!canRefreshLive() || state.section !== 'calendar'))) return;
       state.calendar = res.calendar;
       renderCalendar(res.calendar);
     }).catch(function (err) {
-      if (silent) return;
+      if (silent || jy !== state.calYear || jm !== state.calMonth) return;
       $('#calGrid').innerHTML = emptyState('⚠️', err.message);
+      $('#calAgenda').innerHTML = '';
     });
   }
   function renderCalendar(cal) {
@@ -724,6 +728,7 @@
           return '<span class="cal-task st-' + esc(t.status) + '" data-task="' + t.id + '" title="' + esc(t.title + ' — ' + t.assignee_name) + '" style="background:' + hexAlpha(t.project_color, .14) + '">' +
             (t.due_time_fa ? '🕐 ' + esc(t.due_time_fa) + ' ' : '') + esc(t.title) + '</span>';
         }).join('') +
+        (tasks.length ? '<span class="cal-count" aria-label="' + FAT(tasks.length) + ' تسک">' + FAT(tasks.length) + '</span>' : '') +
         (tasks.length > 3 ? '<div class="cal-more">+' + FAT(tasks.length - 3) + ' تسک دیگر</div>' : '') +
         '</div>');
     });
@@ -731,6 +736,18 @@
     var pad = (7 - (total % 7)) % 7;
     for (var k = 0; k < pad; k++) cells.push('<div class="cal-day empty" aria-hidden="true"></div>');
     $('#calGrid').innerHTML = cells.join('');
+    // A full-width agenda keeps every task legible on narrow screens, including items beyond the first three.
+    var agenda = $('#calAgenda');
+    var daysWithTasks = cal.days.filter(function (d) { return (d.tasks || []).length; });
+    agenda.innerHTML = '<h4>تسک‌های این ماه</h4>' + (daysWithTasks.length ? daysWithTasks.map(function (d) {
+      return '<div class="cal-agenda-day"><div class="cal-agenda-date">' + esc(d.day_fa) + ' ' + esc(cal.title) + '</div>' + d.tasks.map(function (t) {
+        return '<button type="button" class="cal-agenda-task" data-task="' + Number(t.id) + '">' +
+          '<span>' + esc(t.title) + '</span>' + (t.due_time_fa ? '<span class="cal-agenda-time">🕐 ' + esc(t.due_time_fa) + '</span>' : '') + '</button>';
+      }).join('') + '</div>';
+    }).join('') : '<p class="small muted">در این ماه تسکی وجود ندارد.</p>');
+    $$('#calAgenda [data-task]').forEach(function (el) {
+      el.addEventListener('click', function () { openTask(Number(this.getAttribute('data-task'))); });
+    });
     // سرستون‌ها حالا داخل #calGrid هستند؛ ظرف قدیمی خالی می‌ماند
     var oldHead = document.getElementById('calWeekdays');
     if (oldHead) oldHead.style.display = 'none';
@@ -1129,7 +1146,7 @@
   function refreshLiveView() {
     if (!canRefreshLive()) return;
     switch (state.section) {
-      case 'dashboard': loadDashboard(); break;
+      case 'reports': loadDashboard(); break;
       case 'tasks': loadTasks(true); break;
       case 'calendar': loadCalendar(state.calYear, state.calMonth, true); break;
       case 'employees': loadEmployees(); break;
@@ -1489,7 +1506,7 @@
     $('#homeTaskForm').addEventListener('submit', function (e) {
       e.preventDefault(); var input = $('#homeTaskTitle'), title = input.value.trim(); if (!title) return;
       var btn = this.querySelector('[type=submit]'); btn.disabled = true;
-      api('task_create', {title:title, assigned_to:APP.user.id}).then(function (r) { input.value = ''; toast(r.message || 'تسک ثبت شد.'); loadDashboard(); }).catch(function (err) { toast(err.message, 'error'); }).finally(function () { btn.disabled = false; });
+      api('task_create', {title:title, assigned_to:APP.user.id}).then(function (r) { input.value = ''; toast(r.message || 'تسک ثبت شد.'); }).catch(function (err) { toast(err.message, 'error'); }).finally(function () { btn.disabled = false; });
     });
 
     VoiceAI.init({
@@ -1502,7 +1519,7 @@
         var count = (res.tasks || res.ids || []).length;
         toast('🎉 ' + FAT(count) + ' تسک صوتی در تقویم شمسی ثبت شد.', 'success');
         if (state.section === 'tasks') loadTasks();
-        if (state.section === 'dashboard') loadDashboard();
+        if (state.section === 'reports') loadDashboard();
         if (state.section === 'calendar') loadCalendar(state.calYear, state.calMonth);
       },
       onManual: function () { openTaskForm(null); }

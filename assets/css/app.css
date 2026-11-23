@@ -652,3 +652,21 @@ pre,code{overflow-wrap:anywhere}
 #tfMultiWrap[hidden]{display:none}
 
 .checkline[hidden]{display:none}
+
+/* آمار از صفحه اصلی جداست؛ نوار ابزار جانبی داخل منو قرار می‌گیرد. */
+.sidebar-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px}
+.sidebar-tools .clock-box{width:100%;text-align:right}
+.cal-agenda,.cal-count{display:none}
+@media(max-width:600px){
+  .cal-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;margin-top:5px;padding:0 4px;border-radius:10px;background:var(--primary-soft);color:var(--primary);font-weight:800}
+  .cal-more{display:none}
+  .cal-agenda{display:block;margin-top:18px}
+  .cal-agenda h4{font-size:15px;margin:0 0 10px}
+  .cal-agenda-day{margin-bottom:12px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
+  .cal-agenda-date{padding:9px 12px;font-weight:800;background:var(--primary-soft);color:var(--text)}
+  .cal-agenda-task{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;width:100%;padding:12px;text-align:right;color:var(--text);background:transparent;border:0;border-top:1px solid var(--border);font:inherit;line-height:1.7;cursor:pointer}
+  .cal-agenda-task span:first-child{min-width:0;overflow-wrap:anywhere}
+  .cal-agenda-time{white-space:nowrap;color:var(--muted);font-size:12px}
+  .cal-agenda-task:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+}
+@media(max-width:600px){.cal-day .dnum .today-tag{display:none}}

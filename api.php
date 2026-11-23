@@ -1227,7 +1227,7 @@ try {
             if ($jy <= 0 || $jm < 1 || $jm > 12) [$jy, $jm] = Jalali::todayArray();
             $matrix = Jalali::buildMonthMatrix($jy, $jm);
             $tasks = Database::fetchAll(
-                'SELECT t.id, t.title, t.status, t.priority, t.due_date, t.due_time, t.assigned_to, a.full_name AS assignee_name, p.color AS project_color
+                'SELECT t.id, t.title, t.status, t.priority, t.due_date, t.due_time, t.assigned_to, t.created_by, a.full_name AS assignee_name, p.color AS project_color
                  FROM tasks t LEFT JOIN users a ON a.id = t.assigned_to LEFT JOIN projects p ON p.id = t.project_id
                  WHERE t.is_archived = 0 AND t.due_date BETWEEN ? AND ?
                  ORDER BY t.due_date ASC',
