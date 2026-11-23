@@ -650,3 +650,5 @@ pre,code{overflow-wrap:anywhere}
 .quick-voice-button:focus-visible{outline:3px solid #f59e0b;outline-offset:4px}
 @media(max-width:600px){.quick-capture{justify-content:center}.quick-capture-form{flex-basis:100%}.quick-capture-input .btn{flex:1}.quick-voice-button{width:82px;height:82px}}
 #tfMultiWrap[hidden]{display:none}
+
+.checkline[hidden]{display:none}
