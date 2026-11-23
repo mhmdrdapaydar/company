@@ -282,7 +282,7 @@ $theme       = 'light';
             <label class="field"><span>نام و نام خانوادگی</span><input type="text" id="pfFullName" value="<?= e((string) $user['full_name']) ?>"></label>
             <div class="form-row">
               <label class="field"><span>ایمیل</span><input type="email" id="pfEmail" value="<?= e((string) ($user['email'] ?? '')) ?>"></label>
-              <label class="field"><span>تلفن</span><input type="text" id="pfPhone" value="<?= e((string) ($user['phone'] ?? '')) ?>"></label>
+              <label class="field"><span>شماره همراه</span><input type="text" id="pfPhone" value="<?= e((string) ($user['phone'] ?? '')) ?>"></label>
             </div>
             <label class="field"><span>سمت سازمانی</span><input type="text" id="pfPosition" value="<?= e($jobTitle) ?>"></label>
             <label class="field"><span>درباره من</span><textarea id="pfBio" rows="3"><?= e((string) ($user['bio'] ?? '')) ?></textarea></label>

@@ -870,7 +870,7 @@
       (user ? '' : '<div class="form-row"><label class="field"><span>نام کاربری *</span><input type="text" id="emUsername" dir="ltr" placeholder="ali"></label>' +
       '<label class="field"><span>رمز عبور *</span><input type="text" id="emPassword" dir="ltr" placeholder="حداقل ۶ کاراکتر"></label></div>') +
       '<div class="form-row"><label class="field"><span>ایمیل</span><input type="email" id="emEmail" dir="ltr" value="' + esc(u.email || '') + '"></label>' +
-      '<label class="field"><span>تلفن</span><input type="text" id="emPhone" dir="ltr" value="' + esc(u.phone || '') + '"></label></div>' +
+      '<label class="field"><span>شماره همراه</span><input type="text" id="emPhone" dir="ltr" value="' + esc(u.phone || '') + '"></label></div>' +
       '<div class="form-row"><label class="field"><span>سمت سازمانی</span><input type="text" id="emPosition" value="' + esc(u.position_title || '') + '" placeholder="مثلاً کارشناس فروش"></label>' +
       '</div>' +
       '<div class="form-row"><label class="field"><span>نقش سیستمی</span><select id="emRole">' +
