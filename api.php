@@ -35,7 +35,7 @@ $action = strtolower(clean_line($_GET['action'] ?? ($_POST['action'] ?? ''), 60)
 $data = request_data();
 
 // CSRF برای همه درخواست‌های تغییر‌دهنده
-if ($method !== 'GET') {
+if ($method !== 'GET' && !defined('MOBILE_API')) {
     $csrf = (string) ($data['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
     if (!verify_csrf($csrf)) {
         json_error('نشست یا توکن امنیتی شما منقضی شده است. صفحه را تازه‌سازی کنید (F5) و دوباره تلاش کنید.', 419);
@@ -313,7 +313,7 @@ try {
             $notifCount = (int) Database::fetchValue('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0', [$uid], 0);
             json_success([
                 'user' => $fresh,
-                'csrf_token' => csrf_token(),
+                'csrf_token' => defined('MOBILE_API') ? null : csrf_token(),
                 'today' => [
                     'gregorian' => today_date(),
                     'jalali' => Jalali::toDateString(today_date(), true),
@@ -748,8 +748,11 @@ try {
             $result = AiService::processVoiceCommand($savedVoice, $transcript, $assignable, $projects, $uid);
             if (empty($result['tasks'])) json_error('هوش مصنوعی نتوانست تسکی از این پیام استخراج کند. لطفاً واضح‌تر صحبت کنید.');
             if ($voiceFileName !== null) {
-                $_SESSION['voice_preview_files'] = array_filter($_SESSION['voice_preview_files'] ?? [], static fn($ts) => (int) $ts > time() - 86400);
-                $_SESSION['voice_preview_files'][$voiceFileName] = time();
+                if (defined('MOBILE_API')) MobileAuth::recordPreview((int) $MOBILE_TOKEN['id'], $voiceFileName);
+                else {
+                    $_SESSION['voice_preview_files'] = array_filter($_SESSION['voice_preview_files'] ?? [], static fn($ts) => (int) $ts > time() - 86400);
+                    $_SESSION['voice_preview_files'][$voiceFileName] = time();
+                }
             }
             log_activity($uid, 'voice_preview', 'task', null, 'پردازش فرمان صوتی انجام شد (' . count($result['tasks']) . ' تسک).');
             json_success([
@@ -773,7 +776,8 @@ try {
             $voiceFile = clean_line($data['voice_file'] ?? '', 120) ?: null;
             if ($voiceFile !== null) {
                 $voiceFile = basename($voiceFile);
-                if (!isset($_SESSION['voice_preview_files'][$voiceFile]) || (int) $_SESSION['voice_preview_files'][$voiceFile] <= time() - 86400 || !is_file(VOICES_PATH . '/' . $voiceFile)) json_error('فایل صوتی پیش‌نمایش نامعتبر یا منقضی است.', 403);
+                $allowedPreview = defined('MOBILE_API') ? MobileAuth::ownsPreview((int) $MOBILE_TOKEN['id'], $voiceFile) : (isset($_SESSION['voice_preview_files'][$voiceFile]) && (int) $_SESSION['voice_preview_files'][$voiceFile] > time() - 86400);
+                if (!$allowedPreview || !is_file(VOICES_PATH . '/' . $voiceFile)) json_error('فایل صوتی پیش‌نمایش نامعتبر یا منقضی است.', 403);
             }
             $transcript = clean_text($data['transcript'] ?? '', 8000) ?: null;
             $provider = clean_line($data['provider'] ?? 'دستیار هوشمند فارسی', 80);

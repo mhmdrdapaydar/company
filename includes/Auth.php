@@ -8,6 +8,12 @@ final class Auth
 {
     private static ?array $currentUser = null;
     private static bool $loaded = false;
+    private static ?int $mobileUserId = null;
+
+    public static function useMobileUser(int $userId): void
+    {
+        self::$mobileUserId = $userId; self::$loaded = false; self::$currentUser = null;
+    }
 
     public static function user(): ?array
     {
@@ -16,7 +22,7 @@ final class Auth
         }
         self::$loaded = true;
 
-        $uid = (int) ($_SESSION['user_id'] ?? 0);
+        $uid = self::$mobileUserId ?? (int) ($_SESSION['user_id'] ?? 0);
         if ($uid <= 0) {
             return null;
         }

@@ -27,7 +27,7 @@ if (APP_DEBUG) {
 }
 
 // راه‌اندازی امن سشن (نشست کاربری)
-if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
+if (!defined('MOBILE_API') && session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
     $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ($_SERVER['HTTP_FORWARDED'] ?? '')));
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || str_contains($forwardedProto, 'https')
@@ -64,12 +64,15 @@ if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
     }
 }
 
+if (defined('MOBILE_API')) $_SESSION = [];
+
 // بارگذاری کلاس‌ها و توابع اصلی سامانه
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/Jalali.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Schema.php';
 require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/MobileAuth.php';
 require_once __DIR__ . '/PushService.php';
 require_once __DIR__ . '/PersianVoiceParser.php';
 require_once __DIR__ . '/AiService.php';
@@ -79,6 +82,11 @@ try {
     Database::pdo();
     Schema::ensureInitialized();
 } catch (Throwable $dbException) {
+    if (defined('MOBILE_API')) {
+        if (!headers_sent()) { http_response_code(503); header('Content-Type: application/json; charset=UTF-8'); header('Cache-Control: no-store'); }
+        echo json_encode(['ok' => false, 'message' => 'سرویس پایگاه داده در دسترس نیست.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     if (!headers_sent()) {
         http_response_code(500);
         header('Content-Type: text/html; charset=UTF-8');

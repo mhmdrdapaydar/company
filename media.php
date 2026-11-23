@@ -1,7 +1,14 @@
 <?php
 declare(strict_types=1);
+// A bearer-authenticated media request is sessionless; browser media retains its cookie flow.
+if (!empty($_SERVER['HTTP_AUTHORIZATION']) || !empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) define('MOBILE_API', true);
 require_once __DIR__ . '/includes/bootstrap.php';
-
+if (defined('MOBILE_API')) {
+    MobileAuth::requireSecureTransport();
+    $MOBILE_TOKEN = MobileAuth::authenticate();
+    if (!$MOBILE_TOKEN) { http_response_code(401); header('WWW-Authenticate: Bearer'); exit; }
+    Auth::useMobileUser($MOBILE_TOKEN['user_id']);
+}
 $user = Auth::user();
 if (!$user) {
     http_response_code(401);
@@ -48,7 +55,9 @@ if ($type === 'voice') {
         }
     }
     // The uploader may also preview their own not-yet-committed recording.
-    if (!$allowed && isset($_SESSION['voice_preview_files'][$file]) && (int) $_SESSION['voice_preview_files'][$file] > time() - 86400) $allowed = true;
+    if (!$allowed) {
+        $allowed = defined('MOBILE_API') ? MobileAuth::ownsPreview((int) $MOBILE_TOKEN['id'], $file) : (isset($_SESSION['voice_preview_files'][$file]) && (int) $_SESSION['voice_preview_files'][$file] > time() - 86400);
+    }
     $mime = match (strtolower(pathinfo($file, PATHINFO_EXTENSION))) {
         'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'ogg', 'opus' => 'audio/ogg',
         'm4a', 'mp4' => 'audio/mp4', 'aac' => 'audio/aac', 'flac' => 'audio/flac',

@@ -22,6 +22,9 @@ final class Schema
         'leave_requests',
         'announcements',
         'notifications',
+        'mobile_tokens',
+        'mobile_login_limits',
+        'mobile_voice_previews',
         'push_subscriptions',
         'push_jobs',
         'activity_logs',
@@ -111,6 +114,28 @@ final class Schema
                 KEY `idx_users_department` (`department_id`),
                 KEY `idx_users_role_active` (`role`, `is_active`),
                 CONSTRAINT `fk_users_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL
+            ) {$tableOpts}",
+
+            // API اندروید: توکن‌ها هش می‌شوند و وابسته به حساب و دستگاه هستند.
+            "CREATE TABLE IF NOT EXISTS `mobile_tokens` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `user_id` INT UNSIGNED NOT NULL,
+                `token_hash` CHAR(64) NOT NULL,
+                `password_fingerprint` CHAR(64) NOT NULL,
+                `created_at` BIGINT NOT NULL,
+                `last_used_at` BIGINT NOT NULL,
+                PRIMARY KEY (`id`), UNIQUE KEY `uq_mobile_token_hash` (`token_hash`),
+                KEY `idx_mobile_user` (`user_id`), KEY `idx_mobile_last_used` (`last_used_at`),
+                CONSTRAINT `fk_mobile_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) {$tableOpts}",
+            "CREATE TABLE IF NOT EXISTS `mobile_login_limits` (
+                `limit_key` CHAR(64) NOT NULL, `window_id` BIGINT NOT NULL, `hits` INT UNSIGNED NOT NULL,
+                PRIMARY KEY (`limit_key`, `window_id`)
+            ) {$tableOpts}",
+            "CREATE TABLE IF NOT EXISTS `mobile_voice_previews` (
+                `token_id` INT UNSIGNED NOT NULL, `file_name` VARCHAR(120) NOT NULL, `created_at` BIGINT NOT NULL,
+                PRIMARY KEY (`token_id`, `file_name`),
+                CONSTRAINT `fk_mobile_voice_token` FOREIGN KEY (`token_id`) REFERENCES `mobile_tokens` (`id`) ON DELETE CASCADE
             ) {$tableOpts}",
 
             // ۴. پروژه‌های شرکت
@@ -406,6 +431,22 @@ final class Schema
                 created_by INTEGER NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )",
+
+            "CREATE TABLE IF NOT EXISTS mobile_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE, password_fingerprint TEXT NOT NULL,
+                created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_mobile_user ON mobile_tokens(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mobile_last_used ON mobile_tokens(last_used_at)",
+            "CREATE TABLE IF NOT EXISTS mobile_login_limits (
+                limit_key TEXT NOT NULL, window_id INTEGER NOT NULL, hits INTEGER NOT NULL,
+                PRIMARY KEY(limit_key, window_id)
+            )",
+            "CREATE TABLE IF NOT EXISTS mobile_voice_previews (
+                token_id INTEGER NOT NULL REFERENCES mobile_tokens(id) ON DELETE CASCADE,
+                file_name TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(token_id, file_name)
             )",
 
             "CREATE TABLE IF NOT EXISTS projects (
