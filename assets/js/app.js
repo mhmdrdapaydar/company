@@ -51,7 +51,7 @@
     me: 1, bootstrap: 1, dashboard_stats: 1, tasks_list: 1, task_get: 1, users_list: 1,
     departments_list: 1, projects_list: 1,
     announcements_list: 1, notifications_list: 1,
-    activity_list: 1, calendar_month: 1, assignable: 1, settings_get: 1, db_status: 1, ai_status: 1,
+    activity_list: 1, calendar_month: 1, calendar_today: 1, assignable: 1, settings_get: 1, db_status: 1, ai_status: 1,
     notifications_unread: 1, live_reference: 1
   };
 
@@ -157,7 +157,7 @@
     switch (section) {
       case 'reports': loadDashboard(); break;
       case 'tasks': loadTasks(); break;
-      case 'calendar': if (!state.calendar) loadCalendar(); break;
+      case 'calendar': loadCalendar(state.calYear, state.calMonth); break;
       case 'employees': loadEmployees(); break;
       case 'announcements': loadAnnouncements(); break;
       case 'notifications': loadNotifications(); break;
@@ -689,11 +689,31 @@
   }
 
   /* ================= تقویم ================= */
+  var todayRequestVersion = 0;
+  function loadCalendarToday(silent) {
+    var version = ++todayRequestVersion;
+    if (!silent) $('#calTodayTasks').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    api('calendar_today').then(function (res) {
+      if (version !== todayRequestVersion || state.section !== 'calendar') return;
+      var tasks = Array.isArray(res.tasks) ? res.tasks : [];
+      $('#calTodayTasks').innerHTML = '<div class="small muted cal-today-date">' + esc(res.date_human || '') + '</div>' +
+        (tasks.length ? tasks.map(function (t) {
+          return '<button type="button" class="cal-today-task" data-task="' + Number(t.id) + '"><span class="cal-today-title">' + esc(t.title) + '</span>' +
+            '<span class="cal-today-meta">' + (t.due_time_fa ? '🕐 ' + esc(t.due_time_fa) + ' · ' : '') + esc(t.assignee_name || '') + ' · ' + esc(t.status_label || '') + '</span></button>';
+        }).join('') : '<p class="small muted">امروز تسکی وجود ندارد.</p>');
+      $$('#calTodayTasks [data-task]').forEach(function (el) {
+        el.addEventListener('click', function () { openTask(Number(this.getAttribute('data-task'))); });
+      });
+    }).catch(function () {
+      if (!silent && version === todayRequestVersion && state.section === 'calendar') $('#calTodayTasks').innerHTML = '<p class="small muted">دریافت تسک‌های امروز ممکن نشد.</p>';
+    });
+  }
   function loadCalendar(jy, jm, silent) {
     var t = J.todayJalali();
     jy = jy || state.calYear || t[0];
     jm = jm || state.calMonth || t[1];
     state.calYear = jy; state.calMonth = jm;
+    loadCalendarToday(silent);
     if (!silent) {
       $('#calGrid').innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>';
       $('#calAgenda').innerHTML = '';

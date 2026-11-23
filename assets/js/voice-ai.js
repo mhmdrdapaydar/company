@@ -223,6 +223,8 @@
       }
       navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
         self.stream = stream;
+        self.previewMeta = null;
+        document.getElementById('voicePreviewWrap').classList.add('hidden');
         self.chunks = [];
         var mime = '';
         ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].forEach(function (m) {
@@ -522,6 +524,8 @@
         return;
       }
       if (file.size > 20 * 1024 * 1024) { toast('حجم فایل صوتی بیش از ۲۰ مگابایت است.', 'error'); return; }
+      this.previewMeta = null;
+      document.getElementById('voicePreviewWrap').classList.add('hidden');
       this.audioBlob = file;
       if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
       this.audioUrl = URL.createObjectURL(file);
@@ -692,6 +696,7 @@
 
       this.api('voice_preview', fd, { form: true })
         .then(function (res) {
+          if (forceText && !res.voice_file && self.previewMeta && self.previewMeta.voice_file) res.voice_file = self.previewMeta.voice_file;
           self.finishPreview(res, transcript);
         })
         .catch(function (err) {
@@ -808,7 +813,7 @@
             var first = full.split(/\s+/)[0];
             return full && (hasName(full) || (first.length >= 2 && users.filter(function(x) { return (x.full_name || '').split(/\s+/)[0] === first; }).length === 1 && hasName(first)));
           }).map(function(u) { return String(u.id); });
-          if (all || selected.length > 1) Array.from(f('assigned_to').options).forEach(function(o) { o.selected = all || selected.includes(o.value); });
+          if (all || selected.length > 0) Array.from(f('assigned_to').options).forEach(function(o) { o.selected = all || selected.includes(o.value); });
         }
         f('description').value = t.description || '';
         node.querySelector('[data-badge="date"]').textContent = '📅 ' + (t.due_date_human || '—') + (t.due_time_fa ? ' — ساعت ' + t.due_time_fa : '');
@@ -846,6 +851,7 @@
     },
 
     confirm: function () {
+      if (document.getElementById('btnVoiceConfirm').disabled) return;
       var self = this;
       var tasks;
       try { tasks = this.collect(); } catch (e) { return; }

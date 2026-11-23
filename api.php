@@ -139,16 +139,21 @@ function get_task_or_fail(int $id): array
     if (!Auth::canViewTask($t)) json_error('به این تسک دسترسی ندارید.', 403);
     return $t;
 }
+final class TaskValidationException extends RuntimeException
+{
+    public int $httpStatus;
+    public function __construct(string $message, int $httpStatus = 400) { parent::__construct($message); $this->httpStatus = $httpStatus; }
+}
 function create_task_record(array $input, string $createdVia, ?string $voiceFile, ?string $transcript, ?string $aiProvider, int $voiceDuration = 0): int
 {
     global $uid;
     $now = now_datetime();
     $title = clean_line($input['title'] ?? '', 255);
-    if ($title === '') json_error('عنوان تسک را وارد کنید.');
+    if ($title === '') throw new TaskValidationException('عنوان تسک را وارد کنید.');
     $assignedTo = (int) ($input['assigned_to'] ?? $uid);
-    if (!Auth::canAssignTo($assignedTo)) json_error('مجاز به واگذاری تسک به این کارمند نیستید.', 403);
+    if (!Auth::canAssignTo($assignedTo)) throw new TaskValidationException('مجاز به واگذاری تسک به این کارمند نیستید.', 403);
     $target = Database::fetchOne('SELECT id, department_id FROM users WHERE id = ? AND is_active = 1', [$assignedTo]);
-    if (!$target) json_error('کارمند مسئول تسک یافت نشد یا غیرفعال است.');
+    if (!$target) throw new TaskValidationException('کارمند مسئول تسک یافت نشد یا غیرفعال است.');
 
     $projectId = !empty($input['project_id']) ? (int) $input['project_id'] : null;
     if ($projectId !== null) {
@@ -173,7 +178,7 @@ function create_task_record(array $input, string $createdVia, ?string $voiceFile
     // ⚠️ جلوگیری از حذف بی‌صدای تاریخ/ساعت در اثر ورودی نامعتبر
     foreach ([['start_date', 'تاریخ شروع', $startDate], ['due_date', 'تاریخ سررسید', $dueDate], ['due_time', 'ساعت سررسید', $dueTime]] as [$k, $lbl, $parsed]) {
         $raw = $input[$k] ?? null;
-        if ($parsed === null && $raw !== null && trim((string) $raw) !== '') json_error($lbl . ' معتبر نیست.');
+        if ($parsed === null && $raw !== null && trim((string) $raw) !== '') throw new TaskValidationException($lbl . ' معتبر نیست.');
     }
     $completedAt = $status === 'done' ? $now : null;
 
@@ -742,6 +747,10 @@ try {
             $projects = Database::fetchAll("SELECT id, name, code FROM projects WHERE status='active' ORDER BY id ASC");
             $result = AiService::processVoiceCommand($savedVoice, $transcript, $assignable, $projects, $uid);
             if (empty($result['tasks'])) json_error('هوش مصنوعی نتوانست تسکی از این پیام استخراج کند. لطفاً واضح‌تر صحبت کنید.');
+            if ($voiceFileName !== null) {
+                $_SESSION['voice_preview_files'] = array_filter($_SESSION['voice_preview_files'] ?? [], static fn($ts) => (int) $ts > time() - 86400);
+                $_SESSION['voice_preview_files'][$voiceFileName] = time();
+            }
             log_activity($uid, 'voice_preview', 'task', null, 'پردازش فرمان صوتی انجام شد (' . count($result['tasks']) . ' تسک).');
             json_success([
                 'transcript' => $result['transcript'],
@@ -758,27 +767,33 @@ try {
 
         case 'voice_create': {
             if ($method !== 'POST') json_error('متد درخواست نامعتبر است. این عملیات باید با POST ارسال شود (خطای داخلی برنامه؛ صفحه را تازه‌سازی کنید).', 405);
-            $tasksJson = (string) ($data['tasks'] ?? '');
-            $decoded = json_decode($tasksJson, true);
-            if (!is_array($decoded) || empty($decoded)) {
-                // پشتیبانی ارسال مستقیم آرایه
-                $decoded = $data['tasks'] ?? null;
-            }
-            if (!is_array($decoded) || empty($decoded)) json_error('لیست تسک‌های تأییدشده ارسال نشده است.');
+            $rawTasks = $data['tasks'] ?? null;
+            $decoded = is_string($rawTasks) ? json_decode($rawTasks, true) : $rawTasks;
+            if (!is_array($decoded) || !$decoded || count($decoded) > 100) json_error('لیست تسک‌های تأییدشده نامعتبر است.');
             $voiceFile = clean_line($data['voice_file'] ?? '', 120) ?: null;
             if ($voiceFile !== null) {
                 $voiceFile = basename($voiceFile);
-                if (!is_file(VOICES_PATH . '/' . $voiceFile)) $voiceFile = null;
+                if (!isset($_SESSION['voice_preview_files'][$voiceFile]) || (int) $_SESSION['voice_preview_files'][$voiceFile] <= time() - 86400 || !is_file(VOICES_PATH . '/' . $voiceFile)) json_error('فایل صوتی پیش‌نمایش نامعتبر یا منقضی است.', 403);
             }
             $transcript = clean_text($data['transcript'] ?? '', 8000) ?: null;
             $provider = clean_line($data['provider'] ?? 'دستیار هوشمند فارسی', 80);
             $duration = (int) ($data['voice_duration_sec'] ?? 0);
-            $createdIds = [];
+            // Resolve every recipient before writing; the entire confirmed batch commits or rolls back together.
+            $batch = []; $recipientCount = 0;
             foreach ($decoded as $item) {
-                if (!is_array($item)) continue;
-                $createdIds = array_merge($createdIds, create_tasks_for_recipients($item, task_recipients($item), 'voice_ai', $voiceFile, $transcript, $provider, $duration));
+                if (!is_array($item)) json_error('تسک صوتی نامعتبر است.');
+                $ids = task_recipients($item);
+                $recipientCount += count($ids);
+                if ($recipientCount > 1000) json_error('تعداد تسک‌های درخواستی بیش از حد مجاز است.');
+                $batch[] = [$item, $ids];
             }
-            if (empty($createdIds)) json_error('هیچ تسک معتبری ایجاد نشد.');
+            $createdIds = Database::transaction(function () use ($batch, $voiceFile, $transcript, $provider, $duration): array {
+                $created = [];
+                foreach ($batch as [$item, $ids]) {
+                    $created = array_merge($created, create_tasks_for_recipients($item, $ids, 'voice_ai', $voiceFile, $transcript, $provider, $duration));
+                }
+                return $created;
+            });
             $createdTasks = [];
             foreach ($createdIds as $tid) {
                 $tt = fetch_task($tid);
@@ -1221,6 +1236,23 @@ try {
             break;
         }
 
+        case 'calendar_today': {
+            $today = today_date();
+            $sql = 'SELECT t.id, t.title, t.status, t.due_time, a.full_name AS assignee_name FROM tasks t LEFT JOIN users a ON a.id = t.assigned_to WHERE t.is_archived = 0 AND t.due_date = ?';
+            $params = [$today];
+            if (!$isManager) { $sql .= ' AND (t.assigned_to = ? OR t.created_by = ?)'; $params[] = $uid; $params[] = $uid; }
+            $sql .= " ORDER BY CASE WHEN t.due_time IS NULL OR t.due_time = '' THEN 1 ELSE 0 END, t.due_time ASC, t.id ASC";
+            $tasks = Database::fetchAll($sql, $params);
+            foreach ($tasks as &$task) {
+                $task['id'] = (int) $task['id'];
+                $task['due_time_fa'] = !empty($task['due_time']) ? fa_digits((string) $task['due_time']) : '';
+                $task['status_label'] = task_status_label((string) $task['status']);
+            }
+            unset($task);
+            json_success(['date' => $today, 'date_human' => Jalali::toHuman($today, true, true), 'tasks' => $tasks]);
+            break;
+        }
+
         case 'calendar_month': {
             $jy = (int) ($data['jy'] ?? 0);
             $jm = (int) ($data['jm'] ?? 0);
@@ -1414,6 +1446,8 @@ try {
         default:
             json_error('عملیات نامعتبر است: ' . $action, 404);
     }
+} catch (TaskValidationException $e) {
+    json_error($e->getMessage(), $e->httpStatus);
 } catch (RuntimeException $e) {
     json_error($e->getMessage(), 400);
 } catch (Throwable $e) {

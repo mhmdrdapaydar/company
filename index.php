@@ -208,6 +208,10 @@ $theme       = 'light';
             <button class="btn btn-primary btn-sm" id="btnCalNewTask">➕ تسک در این ماه</button>
             <span class="small muted">برای ثبت تسک روی روز و برای مشاهدهٔ تسک روی عنوان آن بزنید.</span>
           </div>
+          <div class="cal-today" aria-labelledby="calTodayHeading">
+            <h3 id="calTodayHeading">تسک‌های امروز</h3>
+            <div id="calTodayTasks" aria-live="polite"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
           <div class="cal-grid cal-grid-main" id="calGrid"><div class="loading"><div class="spinner"></div></div></div>
           <section class="cal-agenda" id="calAgenda" aria-label="فهرست تسک‌های ماه" aria-live="polite"></section>
         </div>

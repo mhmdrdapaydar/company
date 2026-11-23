@@ -28,11 +28,16 @@ $downloadName = $file;
 if ($type === 'voice') {
     $fullPath = VOICES_PATH . '/' . $file;
     // بررسی دسترسی: فایل باید متعلق به تسک یا کامنتی باشد که کاربر مجاز به مشاهده آن است
-    $task = Database::fetchOne('SELECT * FROM tasks WHERE voice_file = ? LIMIT 1', [$file]);
-    if ($task && Auth::canViewTask($task)) {
-        $allowed = true;
-        $downloadName = 'voice-task-' . $task['task_code'] . '.webm';
-    } else {
+    // One recording can belong to several separately assigned tasks.
+    $tasks = Database::fetchAll('SELECT * FROM tasks WHERE voice_file = ?', [$file]);
+    foreach ($tasks as $task) {
+        if (Auth::canViewTask($task)) {
+            $allowed = true;
+            $downloadName = 'voice-task-' . $task['task_code'] . '.webm';
+            break;
+        }
+    }
+    if (!$allowed) {
         $comment = Database::fetchOne('SELECT * FROM task_comments WHERE voice_file = ? LIMIT 1', [$file]);
         if ($comment) {
             $ctask = Database::fetchOne('SELECT * FROM tasks WHERE id = ?', [(int) $comment['task_id']]);
@@ -42,6 +47,8 @@ if ($type === 'voice') {
             }
         }
     }
+    // The uploader may also preview their own not-yet-committed recording.
+    if (!$allowed && isset($_SESSION['voice_preview_files'][$file]) && (int) $_SESSION['voice_preview_files'][$file] > time() - 86400) $allowed = true;
     $mime = match (strtolower(pathinfo($file, PATHINFO_EXTENSION))) {
         'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'ogg', 'opus' => 'audio/ogg',
         'm4a', 'mp4' => 'audio/mp4', 'aac' => 'audio/aac', 'flac' => 'audio/flac',
