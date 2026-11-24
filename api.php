@@ -1,9 +1,27 @@
 <?php
 declare(strict_types=1);
+if (in_array($_GET['action'] ?? '', ['android_push_claim', 'android_push_ack'], true)) define('MOBILE_API', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
+
+// Dedicated Android FCM worker, separately authenticated from browser and mobile tokens.
+$androidWorkerAction = strtolower(clean_line($_GET['action'] ?? '', 60));
+if (in_array($androidWorkerAction, ['android_push_claim', 'android_push_ack'], true)) {
+    MobileAuth::requireSecureTransport();
+    if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') json_error('Method not allowed.', 405);
+    $authorization = MobileAuth::authorizationHeader();
+    $workerToken = str_starts_with($authorization, 'Bearer ') ? substr($authorization, 7) : '';
+    if (!AndroidPush::verifyWorker($workerToken)) json_error('Unauthorized.', 401);
+    try {
+        $workerData = request_data();
+        if ($androidWorkerAction === 'android_push_claim') json_success(['job' => AndroidPush::claim()]);
+        AndroidPush::workerAck((int) ($workerData['id'] ?? 0), (string) ($workerData['lease'] ?? ''), (string) ($workerData['fcm_hash'] ?? ''), (string) ($workerData['result'] ?? ''));
+        json_success();
+    } catch (RuntimeException $e) { json_error($e->getMessage(), in_array($e->getCode(), [400, 409], true) ? $e->getCode() : 400); }
+    catch (Throwable $e) { error_log('Android push worker failed: ' . get_class($e)); json_error('Queue operation failed.', 500); }
+}
 
 // Dedicated queue worker: authenticated separately, never via a browser session.
 $workerAction = strtolower(clean_line($_GET['action'] ?? '', 60));

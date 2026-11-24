@@ -25,6 +25,8 @@ final class Schema
         'mobile_tokens',
         'mobile_login_limits',
         'mobile_voice_previews',
+        'android_push_devices',
+        'android_push_deliveries',
         'push_subscriptions',
         'push_jobs',
         'activity_logs',
@@ -339,6 +341,28 @@ final class Schema
                 CONSTRAINT `fk_notif_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
             ) {$tableOpts}",
 
+            // Android FCM devices and per-device delivery/receipt tracking.
+            "CREATE TABLE IF NOT EXISTS `android_push_devices` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `token_id` INT UNSIGNED NOT NULL,
+                `user_id` INT UNSIGNED NOT NULL, `fcm_hash` CHAR(64) NOT NULL, `fcm_token` TEXT NOT NULL,
+                `created_at` BIGINT NOT NULL, `updated_at` BIGINT NOT NULL,
+                PRIMARY KEY (`id`), UNIQUE KEY `uq_android_token` (`token_id`), UNIQUE KEY `uq_android_fcm` (`fcm_hash`),
+                KEY `idx_android_user` (`user_id`),
+                CONSTRAINT `fk_android_mobile` FOREIGN KEY (`token_id`) REFERENCES `mobile_tokens` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_android_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) {$tableOpts}",
+            "CREATE TABLE IF NOT EXISTS `android_push_deliveries` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `notification_id` INT UNSIGNED NOT NULL,
+                `device_id` INT UNSIGNED NULL, `state` VARCHAR(20) NOT NULL DEFAULT 'queued',
+                `attempts` INT UNSIGNED NOT NULL DEFAULT 0, `available_at` BIGINT NOT NULL,
+                `lease_token` CHAR(48) NULL, `created_at` BIGINT NOT NULL,
+                `sent_at` BIGINT NULL, `received_at` BIGINT NULL,
+                PRIMARY KEY (`id`), UNIQUE KEY `uq_android_delivery` (`notification_id`,`device_id`),
+                KEY `idx_android_pending` (`state`,`available_at`),
+                CONSTRAINT `fk_android_notif` FOREIGN KEY (`notification_id`) REFERENCES `notifications` (`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_android_device` FOREIGN KEY (`device_id`) REFERENCES `android_push_devices` (`id`) ON DELETE SET NULL
+            ) {$tableOpts}",
+
             // اشتراک‌های پوش و صف تحویل؛ هیچ کلید خصوصی VAPID در دیتابیس ذخیره نمی‌شود.
             "CREATE TABLE IF NOT EXISTS `push_subscriptions` (
                 `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -592,6 +616,21 @@ final class Schema
                 is_read INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             )",
+
+            "CREATE TABLE IF NOT EXISTS android_push_devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, token_id INTEGER NOT NULL UNIQUE REFERENCES mobile_tokens(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, fcm_hash TEXT NOT NULL UNIQUE,
+                fcm_token TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_android_user ON android_push_devices(user_id)",
+            "CREATE TABLE IF NOT EXISTS android_push_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+                device_id INTEGER NULL REFERENCES android_push_devices(id) ON DELETE SET NULL,
+                state TEXT NOT NULL DEFAULT 'queued', attempts INTEGER NOT NULL DEFAULT 0,
+                available_at INTEGER NOT NULL, lease_token TEXT NULL, created_at INTEGER NOT NULL,
+                sent_at INTEGER NULL, received_at INTEGER NULL, UNIQUE(notification_id, device_id)
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_android_pending ON android_push_deliveries(state, available_at)",
 
             "CREATE TABLE IF NOT EXISTS push_subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

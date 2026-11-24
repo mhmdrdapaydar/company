@@ -434,9 +434,9 @@ function create_notification(
     string $entityType = 'task',
     ?int $entityId = null,
     bool $required = false
-): void {
+): ?int {
     if ($actorId !== null && $userId === $actorId) {
-        return;
+        return null;
     }
     try {
         $notificationId = Database::insert(
@@ -452,10 +452,13 @@ function create_notification(
                 now_datetime(),
             ]
         );
-        try { PushService::enqueue($notificationId, $userId); } catch (Throwable $pushError) { error_log('Push queue error: ' . $pushError->getMessage()); }
+        try { PushService::enqueue($notificationId, $userId); } catch (Throwable $pushError) { error_log('Push queue error: ' . get_class($pushError)); }
+        try { AndroidPush::enqueue($notificationId, $userId); } catch (Throwable $pushError) { error_log('Android push queue error: ' . get_class($pushError)); }
+        return $notificationId;
     } catch (Throwable $e) {
         error_log('Notification insert failed: ' . $e->getMessage());
         if ($required) throw $e;
+        return null;
     }
 }
 
