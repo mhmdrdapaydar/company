@@ -59,7 +59,6 @@ $theme       = 'light';
     </div>
     <nav class="nav" id="mainNav">
       <a href="#dashboard" class="active" data-section="dashboard"><span>🏠</span> صفحه اصلی</a>
-      <a href="#reports" data-section="reports"><span>📊</span> آمار و گزارش‌ها</a>
       <a href="#tasks" data-section="tasks"><span>🗂️</span> تسک‌ها</a>
       <a href="#calendar" data-section="calendar"><span>📅</span> تقویم شمسی</a>
 
@@ -116,40 +115,20 @@ $theme       = 'light';
 
       <!-- ================= داشبورد ================= -->
       <section class="section active" id="section-dashboard">
-        <div class="card quick-capture">
-          <form id="homeTaskForm" class="quick-capture-form">
-            <label for="homeTaskTitle"><strong>ثبت سریع تسک</strong></label>
-            <div class="quick-capture-input"><input id="homeTaskTitle" maxlength="255" required placeholder="چه کاری باید انجام شود؟"><button class="btn btn-primary" type="submit">ثبت تسک</button><button class="btn" type="button" id="homeTaskDetails">گزینه‌های بیشتر</button></div>
-          </form>
-          <div class="quick-voice"><button type="button" id="homeVoice" class="quick-voice-button" aria-label="ضبط تسک صوتی">🎙️</button><span>ثبت با صدا</span></div>
-        </div>
-
-      </section>
-
-      <section class="section" id="section-reports">
         <div class="grid grid-4" id="dashStats" style="margin-bottom:16px">
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
           <div class="card"><div class="loading"><div class="spinner"></div></div></div>
         </div>
-
-        <div class="grid grid-2" style="margin-bottom:16px">
-          <div class="card">
-            <h3>📈 روند ۷ روز اخیر <span class="small muted" style="font-weight:400">(ایجاد شده / تکمیل شده)</span></h3>
-            <div class="chart-box"><canvas class="chart" id="chart7d" width="800" height="260"></canvas></div>
-          </div>
-        </div>
-
-        <div class="grid grid-2">
-          <div class="card">
-            <h3>📋 تسک‌های من <a href="#tasks" class="small" style="margin-right:auto">مشاهده همه ←</a></h3>
-            <div id="dashMyTasks"><div class="loading"><div class="spinner"></div></div></div>
-          </div>
-          <div class="card">
-            <h3>🗓️ سررسیدهای نزدیک</h3>
-            <div id="dashUpcoming"><div class="loading"><div class="spinner"></div></div></div>
-          </div>
+        <div class="card quick-capture">
+          <form id="homeTaskForm" class="quick-capture-form">
+            <label for="homeTaskTitle"><strong>ثبت سریع تسک</strong></label>
+            <textarea id="homeTaskTitle" class="quick-title" rows="3" maxlength="255" required placeholder="چه کاری باید انجام شود؟"></textarea>
+            <button class="btn btn-primary" type="submit">ثبت تسک</button>
+            <button class="btn" type="button" id="homeTaskDetails">ثبت تسک به صورت دستی</button>
+          </form>
+          <div class="quick-voice"><button type="button" id="homeVoice" class="quick-voice-button" aria-label="ثبت تسک صوتی" aria-describedby="homeVoiceHint">🎙️</button><span id="homeVoiceHint">برای ضبط نگه دارید؛ برای ورود به بخش صوتی بزنید</span></div>
         </div>
       </section>
 
@@ -161,33 +140,6 @@ $theme       = 'light';
               <input type="text" id="taskSearch" placeholder="جستجو در عنوان، توضیحات، یا کد تسک...">
               <span>🔍</span>
             </div>
-            <select id="taskScope">
-              <option value="mine">تسک‌های من</option>
-              <?php if ($isManager): ?>
-              <option value="team">همه تسک‌های شرکت</option>
-              <option value="assigned">محول‌شده به من</option>
-              <?php endif; ?>
-            </select>
-            <select id="taskStatusFilter">
-              <option value="">همه وضعیت‌ها</option>
-              <option value="todo">در انتظار</option>
-              <option value="in_progress">در حال انجام</option>
-              <option value="review">در بررسی</option>
-              <option value="done">انجام شده</option>
-            </select>
-            <?php if ($isManager): ?>
-            <select id="taskUserFilter">
-              <option value="">همه کارمندان</option>
-              <?php foreach ($assignables as $a): ?>
-              <option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?></option>
-              <?php endforeach; ?>
-            </select>
-            <?php endif; ?>
-            <div class="view-toggle">
-              <button data-view="list" class="active">☰ لیست</button>
-              <button data-view="kanban">▦ کانبان</button>
-            </div>
-            <button class="btn btn-primary btn-sm" id="btnNewTask">➕ تسک جدید</button>
           </div>
         </div>
         <div id="tasksListView"><div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div></div>
@@ -206,14 +158,10 @@ $theme       = 'light';
             <button class="btn btn-sm" id="calToday">امروز</button>
             <div class="spacer" style="flex:1"></div>
             <button class="btn btn-primary btn-sm" id="btnCalNewTask">➕ تسک در این ماه</button>
-            <span class="small muted">برای ثبت تسک روی روز و برای مشاهدهٔ تسک روی عنوان آن بزنید.</span>
-          </div>
-          <div class="cal-today" aria-labelledby="calTodayHeading">
-            <h3 id="calTodayHeading">تسک‌های امروز</h3>
-            <div id="calTodayTasks" aria-live="polite"><div class="loading"><div class="spinner"></div></div></div>
+            <span class="small muted">برای مشاهدهٔ تسک‌ها، یک روز را انتخاب کنید.</span>
           </div>
           <div class="cal-grid cal-grid-main" id="calGrid"><div class="loading"><div class="spinner"></div></div></div>
-          <section class="cal-agenda" id="calAgenda" aria-label="فهرست تسک‌های ماه" aria-live="polite"></section>
+          <section class="cal-agenda" id="calAgenda" aria-label="تسک‌های روز انتخاب‌شده" aria-live="polite"></section>
         </div>
       </section>
 
@@ -405,7 +353,7 @@ $theme       = 'light';
         </select></label>
         <label class="field"><span>وضعیت</span><select id="tfStatus">
           <option value="todo">در انتظار</option><option value="in_progress">در حال انجام</option>
-          <option value="review">در بررسی</option><option value="done">انجام شده</option>
+          <option value="done">انجام شده</option>
         </select></label>
       </div>
       <?php if ($isManager): ?><fieldset id="tfMultiWrap" class="field"><legend>واگذاری به چند نفر</legend><label><input type="checkbox" id="tfAll"> همه کارمندان</label><select id="tfAssignees" multiple size="4" aria-label="انتخاب چند کارمند"><?php foreach ($assignables as $a): ?><option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?></option><?php endforeach; ?></select><span class="small muted">برای انتخاب چند نفر از فهرست استفاده کنید؛ انتخاب خالی یعنی مسئول بالا.</span></fieldset><?php endif; ?>

@@ -97,6 +97,7 @@ function parse_time_input(mixed $v): ?string
 function enrich_task(array $t): array
 {
     $t['id'] = (int) $t['id'];
+    if (($t['status'] ?? '') === 'review') $t['status'] = 'in_progress'; // legacy records remain intact
     $t['project_id'] = $t['project_id'] !== null ? (int) $t['project_id'] : null;
     $t['department_id'] = $t['department_id'] !== null ? (int) $t['department_id'] : null;
     $t['assigned_to'] = (int) $t['assigned_to'];
@@ -164,7 +165,8 @@ function create_task_record(array $input, string $createdVia, ?string $voiceFile
         ? (int) $input['department_id']
         : ((int) ($target['department_id'] ?? 0) ?: null);
     $status = strtolower(clean_line($input['status'] ?? 'todo', 20));
-    if (!in_array($status, ['todo', 'in_progress', 'review', 'done'], true)) $status = 'todo';
+    if ($status === 'review') $status = 'in_progress';
+    if (!in_array($status, ['todo', 'in_progress', 'done'], true)) $status = 'todo';
     $priority = strtolower(clean_line($input['priority'] ?? 'medium', 20));
     if (!in_array($priority, ['low', 'medium', 'high', 'urgent'], true)) $priority = 'medium';
     $progress = max(0, min(100, (int) ($input['progress'] ?? ($status === 'done' ? 100 : 0))));
@@ -342,7 +344,7 @@ try {
 
         case 'dashboard_stats': {
             $today = today_date();
-            $weekAgo = date('Y-m-d', strtotime('-7 days'));
+            $weekAgo = date('Y-m-d', strtotime('-6 days'));
             // نکته: شرط دسترسی با پیشوند نام جدول (t.) نوشته می‌شود تا در کوئری‌های JOIN
             // که جدول users هم ستون created_by دارد، خطای «ambiguous column name» رخ ندهد.
             if ($isManager) {
@@ -354,8 +356,11 @@ try {
                 "SELECT t.status, COUNT(*) AS c FROM tasks t WHERE {$base} AND t.is_archived = 0 GROUP BY t.status",
                 $params
             );
-            $byStatus = ['todo' => 0, 'in_progress' => 0, 'review' => 0, 'done' => 0];
-            foreach ($counts as $r) $byStatus[(string) $r['status']] = (int) $r['c'];
+            $byStatus = ['todo' => 0, 'in_progress' => 0, 'done' => 0];
+            foreach ($counts as $r) {
+                $key = (string) $r['status'] === 'review' ? 'in_progress' : (string) $r['status'];
+                if (isset($byStatus[$key])) $byStatus[$key] += (int) $r['c'];
+            }
             $total = array_sum($byStatus);
             $overdue = (int) Database::fetchValue(
                 "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < ?",
@@ -366,8 +371,8 @@ try {
                 array_merge($params, [$today]), 0
             );
             $doneWeek = (int) Database::fetchValue(
-                "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status = 'done' AND DATE(t.completed_at) >= ?",
-                array_merge($params, [$weekAgo]), 0
+                "SELECT COUNT(*) FROM tasks t WHERE {$base} AND t.is_archived = 0 AND t.status = 'done' AND DATE(t.completed_at) >= ? AND DATE(t.completed_at) <= ?",
+                array_merge($params, [$weekAgo, $today]), 0
             );
             $myTasks = Database::fetchAll(
                 "SELECT t.*, a.full_name AS assignee_name, p.name AS project_name, p.color AS project_color
@@ -439,7 +444,8 @@ try {
                 $where[] = 't.assigned_to = ?'; $params[] = $uid;
             }
             if ($status !== '' && in_array($status, ['todo', 'in_progress', 'review', 'done'], true)) {
-                $where[] = 't.status = ?'; $params[] = $status;
+                if ($status === 'in_progress' || $status === 'review') $where[] = "t.status IN ('in_progress', 'review')";
+                else { $where[] = 't.status = ?'; $params[] = $status; }
             }
             if ($priority !== '' && in_array($priority, ['low', 'medium', 'high', 'urgent'], true)) {
                 $where[] = 't.priority = ?'; $params[] = $priority;
@@ -500,7 +506,8 @@ try {
             if (isset($data['description'])) { $sets[] = 'description = ?'; $params[] = clean_text($data['description'], 8000); }
             if (isset($data['status'])) {
                 $st = strtolower(clean_line($data['status'], 20));
-                if (in_array($st, ['todo', 'in_progress', 'review', 'done'], true)) {
+                if ($st === 'review') $st = 'in_progress';
+                if (in_array($st, ['todo', 'in_progress', 'done'], true)) {
                     $sets[] = 'status = ?'; $params[] = $st;
                     if ($st === 'done') {
                         if ($t['status'] !== 'done' || empty($t['completed_at'])) { $sets[] = 'completed_at = ?'; $params[] = $now; }
@@ -559,9 +566,7 @@ try {
             $fresh = Database::transaction(function () use ($sets, $params, $uid, $t, $data) {
                 Database::execute('UPDATE tasks SET ' . implode(', ', $sets) . ' WHERE id = ?', $params);
                 log_activity($uid, 'update_task', 'task', (int) $t['id'], 'تسک «' . $t['title'] . '» ویرایش شد.');
-                if (isset($data['status']) && strtolower(clean_line($data['status'], 20)) === 'review' && $t['status'] !== 'review') {
-                    create_notification((int) $t['created_by'], $uid, 'task_review', 'تسک آماده بررسی است', 'تسک «' . $t['title'] . '» برای بررسی نهایی ارسال شد.', 'task', (int) $t['id'], true);
-                }
+
                 $fresh = fetch_task((int) $t['id']);
                 if ($fresh && (int) $fresh['assigned_to'] !== (int) $t['assigned_to']) {
                     create_notification((int) $fresh['assigned_to'], $uid, 'task_assigned', 'تسک به شما واگذار شد',
@@ -1249,6 +1254,7 @@ try {
             $tasks = Database::fetchAll($sql, $params);
             foreach ($tasks as &$task) {
                 $task['id'] = (int) $task['id'];
+                if ($task['status'] === 'review') $task['status'] = 'in_progress';
                 $task['due_time_fa'] = !empty($task['due_time']) ? fa_digits((string) $task['due_time']) : '';
                 $task['status_label'] = task_status_label((string) $task['status']);
             }
@@ -1274,6 +1280,7 @@ try {
             }
             $byDate = [];
             foreach ($tasks as $t) {
+                if ($t['status'] === 'review') $t['status'] = 'in_progress';
                 $d = substr((string) $t['due_date'], 0, 10);
                 $byDate[$d][] = [
                     'id' => (int) $t['id'], 'title' => $t['title'], 'status' => $t['status'],

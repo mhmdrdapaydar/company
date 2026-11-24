@@ -215,13 +215,16 @@
       else this.startRecord();
     },
 
-    startRecord: function () {
+    startRecord: function (shouldStart) {
       var self = this;
+      var requestId = (this.recordRequestId || 0) + 1;
+      this.recordRequestId = requestId;
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         toast('مرورگر شما از ضبط صدا پشتیبانی نمی‌کند. می‌توانید فایل صوتی آپلود کنید یا متن بنویسید.', 'error');
         return;
       }
-      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
+      return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
+        if (self.recordRequestId !== requestId || (typeof shouldStart === 'function' && !shouldStart())) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
         self.stream = stream;
         self.previewMeta = null;
         document.getElementById('voicePreviewWrap').classList.add('hidden');
@@ -297,6 +300,7 @@
     },
 
     stopRecord: function (silent) {
+      this.recordRequestId = (this.recordRequestId || 0) + 1;
       var self = this;
       if (this.recorder && this.recorder.state !== 'inactive') {
         try { this.recorder.stop(); } catch (e) {}

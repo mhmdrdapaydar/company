@@ -245,7 +245,7 @@ function task_status_label(string $status): string
     return match ($status) {
         'todo'        => 'در انتظار انجام',
         'in_progress' => 'در حال انجام',
-        'review'      => 'در انتظار بررسی',
+        'review'      => 'در حال انجام',
         'done'        => 'انجام‌شده',
         default       => $status,
     };

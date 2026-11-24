@@ -679,3 +679,23 @@ pre,code{overflow-wrap:anywhere}
 .cal-today-meta{font-size:12px;color:var(--muted);text-align:left}
 .cal-today-task:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 @media(max-width:600px){.cal-today-task{flex-direction:column;gap:3px}.cal-today-meta{text-align:right}}
+
+/* صفحهٔ اصلی و انتخاب روز تقویم */
+#dashStats{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:820px){#dashStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.quick-capture{display:flex;flex-direction:column;align-items:stretch;gap:20px}
+.quick-capture-form{flex:none;width:100%;display:grid;gap:10px}
+.quick-title{width:100%;min-height:90px;resize:vertical;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);padding:12px;font:inherit;line-height:1.8}
+.quick-voice{align-self:center;text-align:center}
+.quick-voice-button{touch-action:none;user-select:none;-webkit-user-select:none}
+.cal-day[data-date]{width:100%;text-align:right;color:var(--text);font:inherit;cursor:pointer}
+.cal-day.selected{outline:3px solid var(--primary);outline-offset:-3px}
+.cal-day:focus-visible{outline:3px solid var(--primary);outline-offset:-3px}
+.cal-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;margin-top:5px;padding:0 4px;border-radius:10px;background:var(--primary-soft);color:var(--primary);font-weight:800}
+.cal-agenda{display:block;margin-top:18px}
+.cal-agenda h4{font-size:15px;margin:0 0 10px}
+.cal-agenda-day{margin-bottom:12px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
+.cal-agenda-task{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;width:100%;padding:12px;text-align:right;color:var(--text);background:transparent;border:0;border-top:1px solid var(--border);font:inherit;line-height:1.7;cursor:pointer}
+.cal-agenda-task span:first-child{min-width:0;overflow-wrap:anywhere}
+.cal-agenda-time{white-space:nowrap;color:var(--muted);font-size:12px}
+.cal-agenda-task:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}

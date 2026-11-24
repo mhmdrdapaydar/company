@@ -43,7 +43,7 @@ https://best-zone.ir/company/
 | GET | `tasks_list` | اختیاری: `scope=mine|assigned|team`, `status`, `search`, `assigned_to`, `due_from`, `due_to` | `tasks`, `count`؛ `team` و فیلتر کارمند برای مدیر است |
 | GET | `task_get` | `id` | `task` همراه با جزئیات، نظرها و پیوست‌ها در محدودهٔ مجاز |
 | POST | `task_create` | `title`, `assigned_to`، اختیاری `description`, `due_date`, `due_time` | `task`, `ids` |
-| POST | `task_update` | `id` و فیلدهای تغییرکرده، از جمله `status=todo|in_progress|review|done` | `task` |
+| POST | `task_update` | `id` و فیلدهای تغییرکرده، از جمله `status=todo|in_progress|done` | `task` |
 | POST | `task_delete` | `id` | وضعیت حذف؛ فقط سازنده یا مدیر شرکت |
 | GET | `assignable` | — | `users` قابل انتخاب برای کاربر فعلی |
 | GET | `calendar_today` | — | `date`, `date_human`, `tasks` |
@@ -196,7 +196,7 @@ curl -X POST "$BASE/mobile-v1.php?action=task_update" \
   -d '{"id":123,"status":"in_progress","progress":50}'
 ```
 
-در ساخت، `title` اجباری است و اگر مسئول مشخص نشود کاربر جاری در نظر گرفته می‌شود. فیلدهای اختیاری شامل `description`، `start_date`، `due_date`، `due_time`، `status`، `priority`، `progress`، `estimated_minutes`، `recurrence`، `category`، `tags` و `subtasks` هستند. وضعیت‌ها `todo`، `in_progress`، `review`، `done`؛ اولویت‌ها `low`، `medium`، `high`، `urgent` و تکرارها `none`، `daily`، `weekly`، `monthly` هستند. پیشرفت بین صفر و صد محدود می‌شود و وضعیت `done` آن را ۱۰۰ می‌کند. حداکثر ۱۲ زیرتسک هنگام ساخت ثبت می‌شود. مقادیر نامعتبر وضعیت و اولویت هنگام ساخت به مقدار پیش‌فرض تبدیل می‌شوند؛ تاریخ و ساعت نامعتبر خطا می‌دهند.
+در ساخت، `title` اجباری است و اگر مسئول مشخص نشود کاربر جاری در نظر گرفته می‌شود. فیلدهای اختیاری شامل `description`، `start_date`، `due_date`، `due_time`، `status`، `priority`، `progress`، `estimated_minutes`، `recurrence`، `category`، `tags` و `subtasks` هستند. وضعیت‌ها `todo`، `in_progress`، `done`؛ اولویت‌ها `low`، `medium`، `high`، `urgent` و تکرارها `none`، `daily`، `weekly`، `monthly` هستند. پیشرفت بین صفر و صد محدود می‌شود و وضعیت `done` آن را ۱۰۰ می‌کند. حداکثر ۱۲ زیرتسک هنگام ساخت ثبت می‌شود. مقادیر نامعتبر وضعیت و اولویت هنگام ساخت به مقدار پیش‌فرض تبدیل می‌شوند؛ تاریخ و ساعت نامعتبر خطا می‌دهند.
 
 برای ایجاد گروهی مدیر می‌تواند `"assigned_ids":[3,4]` یا `"assign_all":true` را جایگزین `assigned_to` کند. پاسخ `ids` شناسهٔ همهٔ تسک‌های مستقل و `task` جزئیات اولین مورد را دارد. به‌روزرسانی برای هر شناسه جداست؛ ارسال `assigned_ids` در ویرایش، عملیات گروهی نیست. برای پاک کردن تاریخ/ساعت در ویرایش می‌توان رشتهٔ خالی فرستاد.
 
@@ -302,3 +302,5 @@ client.newCall(request).execute().use { response ->
 - اگر فایل باز نمی‌شود، نشانی را نسبت به `/company/` resolve کنید، هدر را برای خود فایل هم بفرستید و مجوز تسک/انقضای پیش‌نمایش را بررسی کنید.
 - مسیرهای ثبت تکرارناپذیری تضمین‌شده ندارند؛ در timeout قبل از تکرار، داده‌های اخیر را بررسی و از کاربر تأیید بگیرید.
 - قبل از انتشار، ورود، خروج، محدودیت ورود، حساب غیرفعال، مجوز نقش‌ها، تسک تکی و گروهی، تقویم، اعلان و صوت را در محیط staging با کاربران واقعی آزمایشی و وب‌سرور عملیاتی آزمایش کنید. مخزن و نمونه‌های این سند اثبات استقرار یا سلامت سایت اصلی نیستند.
+
+**سازگاری وضعیت قدیمی:** وضعیت قبلی `review` برای نمایش و خروجی تسک به `in_progress` تبدیل می‌شود؛ ارسال قدیمی `review` نیز به `in_progress` نگاشت می‌شود. رکوردهای قدیمی بدون حذف متادیتا نگهداری می‌شوند.
