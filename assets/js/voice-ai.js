@@ -103,7 +103,7 @@
         '          <button type="button" class="icon-btn" data-remove title="حذف از لیست">🗑️</button></div>' +
         '        <label class="field"><span>عنوان تسک</span><input type="text" data-f="title"></label>' +
         '        <div class="form-row">' +
-        '          <label class="field"><span>تاریخ سررسید (شمسی)</span><input type="text" data-f="due_date_jalali" placeholder="۱۴۰۵/۰۸/۲۶"></label>' +
+        '          <div class="field"><span>تاریخ سررسید (شمسی)</span><input type="text" data-f="due_date_jalali" aria-label="تاریخ سررسید شمسی" dir="ltr" inputmode="numeric" autocomplete="off" placeholder="۱۴۰۵/۰۸/۲۶"><small class="date-hint">انتخاب از تقویم یا ورود دستی</small></div>' +
         '          <label class="field"><span>ساعت</span><input type="time" data-f="due_time"></label>' +
         '        </div>' +
         '        <div class="form-row">' +
@@ -173,6 +173,7 @@
     },
 
     close: function () {
+      if (window.JalaliJS && window.JalaliJS.closeDatePicker) window.JalaliJS.closeDatePicker();
       this.stopRecord(true);
       this.el.classList.remove('open');
       document.body.style.overflow = '';
@@ -791,6 +792,7 @@
     renderPreview: function () {
       var wrap = document.getElementById('voicePreviewList');
       var tpl = document.getElementById('voiceTaskTpl');
+      if (window.JalaliJS && window.JalaliJS.closeDatePicker) window.JalaliJS.closeDatePicker();
       wrap.innerHTML = '';
       if (!this.previewTasks.length) {
         wrap.innerHTML = '<div class="empty"><span class="big">🤔</span>تسکی برای نمایش نیست. متن را واضح‌تر بنویسید.</div>';
@@ -823,6 +825,17 @@
         node.querySelector('[data-badge="date"]').textContent = '📅 ' + (t.due_date_human || '—') + (t.due_time_fa ? ' — ساعت ' + t.due_time_fa : '');
         node.querySelector('[data-badge="assignee"]').textContent = '👤 ' + Array.from(f('assigned_to').selectedOptions).map(function(o) { return o.textContent; }).join('، ');
         wrap.appendChild(node);
+        if (window.JalaliJS && window.JalaliJS.attachDatePicker) {
+          var dateInput = f('due_date_jalali'), timeInput = f('due_time');
+          window.JalaliJS.attachDatePicker(dateInput);
+          function syncDateBadge() {
+            var raw = dateInput.value.trim(), gregorian = raw ? window.JalaliJS.parseToGregorian(raw) : null;
+            var label = !raw ? '—' : (gregorian ? window.JalaliJS.human(gregorian, true, true) : 'تاریخ نامعتبر');
+            node.querySelector('[data-badge="date"]').textContent = '📅 ' + label + (timeInput.value ? ' — ساعت ' + FAT(timeInput.value) : '');
+          }
+          dateInput.addEventListener('input', syncDateBadge);
+          timeInput.addEventListener('input', syncDateBadge);
+        }
       });
     },
 

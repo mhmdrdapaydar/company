@@ -336,7 +336,7 @@ $theme       = 'light';
 
 <!-- ================= مودال تسک ================= -->
 <div class="modal-backdrop" id="modalTask">
-  <div class="modal modal-lg">
+  <div class="modal modal-lg task-modal">
     <div class="modal-head">
       <h3 id="taskModalTitle">➕ ثبت تسک جدید</h3>
       <button class="icon-btn" id="taskModalClose" title="بستن">✕</button>
@@ -358,11 +358,10 @@ $theme       = 'light';
       </div>
       <?php if ($isManager): ?><fieldset id="tfMultiWrap" class="field"><legend>واگذاری به چند نفر</legend><label><input type="checkbox" id="tfAll"> همه کارمندان</label><select id="tfAssignees" multiple size="4" aria-label="انتخاب چند کارمند"><?php foreach ($assignables as $a): ?><option value="<?= e((string) $a['id']) ?>"><?= e((string) $a['full_name']) ?></option><?php endforeach; ?></select><span class="small muted">برای انتخاب چند نفر از فهرست استفاده کنید؛ انتخاب خالی یعنی مسئول بالا.</span></fieldset><?php endif; ?>
       <div class="form-row3">
-        <label class="field"><span>تاریخ سررسید (شمسی)</span><input type="text" id="tfDueDate" placeholder="۱۴۰۵/۰۸/۲۶" dir="ltr"></label>
+        <div class="field"><label for="tfDueDate" class="field-label">تاریخ سررسید (شمسی)</label><input type="text" id="tfDueDate" placeholder="۱۴۰۵/۰۸/۲۶" dir="ltr" inputmode="numeric" autocomplete="off" aria-describedby="tfDueHint"><small id="tfDueHint" class="date-hint">تاریخ را از تقویم انتخاب کنید یا دستی بنویسید.</small></div>
         <label class="field"><span>ساعت سررسید</span><input type="time" id="tfDueTime"></label>
       </div>
       <div class="form-row3">
-        <label class="field"><span>تاریخ شروع (شمسی)</span><input type="text" id="tfStartDate" placeholder="۱۴۰۵/۰۸/۲۰" dir="ltr"></label>
         <label class="field"><span>تکرار</span><select id="tfRecurrence">
           <option value="none">بدون تکرار</option><option value="daily">روزانه</option>
           <option value="weekly">هفتگی</option><option value="monthly">ماهانه</option>

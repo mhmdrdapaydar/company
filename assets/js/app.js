@@ -443,20 +443,21 @@
     $('#tfAssignee').value = String(task ? task.assigned_to : (prefill && prefill.assigned_to) || APP.user.id);
     var multi = $('#tfMultiWrap'); if (multi) { multi.hidden = !!task; $('#tfAll').checked = false; Array.from($('#tfAssignees').options).forEach(function (o) { o.selected = false; }); }
     $('#tfStatus').value = task ? task.status : 'todo';
-    $('#tfDueDate').value = task && task.due_date ? J.gregorianToJalaliInput(task.due_date) : (prefill && prefill.due_date_jalali) || APP.today.jalali;
+    $('#tfDueDate').value = task ? (task.due_date ? J.gregorianToJalaliInput(task.due_date) : '') : ((prefill && prefill.due_date_jalali) || APP.today.jalali);
     $('#tfDueTime').value = task && task.due_time ? task.due_time : (prefill && prefill.due_time) || '';
-    $('#tfStartDate').value = task && task.start_date ? J.gregorianToJalaliInput(task.start_date) : '';
     $('#tfRecurrence').value = task ? (task.recurrence || 'none') : 'none';
     $('#modalTask').classList.add('open');
     document.body.style.overflow = 'hidden';
     setTimeout(function () { $('#tfTitle').focus(); }, 120);
   }
   function closeTaskForm() {
+    if (J.closeDatePicker) J.closeDatePicker();
     $('#modalTask').classList.remove('open');
     document.body.style.overflow = '';
     state.editingTask = null;
   }
   function initTaskForm() {
+    J.attachDatePicker($('#tfDueDate'));
     $('#taskModalClose').addEventListener('click', closeTaskForm);
     $('#btnCancelTask').addEventListener('click', closeTaskForm);
     $('#modalTask').addEventListener('click', function (e) { if (e.target === this) closeTaskForm(); });
@@ -466,9 +467,6 @@
       var dueJ = $('#tfDueDate').value.trim();
       var dueG = dueJ ? J.parseToGregorian(dueJ) : '';
       if (dueJ && !dueG) { toast('تاریخ سررسید شمسی نامعتبر است (نمونه: ۱۴۰۵/۰۸/۲۶).', 'error'); return; }
-      var startJ = $('#tfStartDate').value.trim();
-      var startG = startJ ? J.parseToGregorian(startJ) : null;
-      if (startJ && !startG) { toast('تاریخ شروع شمسی نامعتبر است.', 'error'); return; }
       var payload = {
         title: $('#tfTitle').value.trim(),
         description: $('#tfDescription').value.trim(),
@@ -476,7 +474,6 @@
         status: $('#tfStatus').value,
         due_date: dueG || '',
         due_time: $('#tfDueTime').value,
-        start_date: startG || '',
         recurrence: $('#tfRecurrence').value
       };
       if (!id && $('#tfMultiWrap')) { var selected = Array.from($('#tfAssignees').selectedOptions).map(function (o) { return Number(o.value); }); if ($('#tfAll').checked) payload.assign_all = true; else if (selected.length) payload.assigned_ids = selected; }
@@ -762,7 +759,7 @@
     $('#btnCalNewTask').addEventListener('click', function () {
       var today = J.todayJalali();
       var same = today[0] === state.calYear && today[1] === state.calMonth;
-      openTaskForm(null, { due_date_jalali: same ? APP.today.jalali : (state.calYear + '/' + String(state.calMonth).padStart(2, '0') + '/01') });
+      openTaskForm(null, { due_date_jalali: state.selectedCalendarDate ? J.gregorianToJalaliInput(state.selectedCalendarDate) : (same ? APP.today.jalali : (state.calYear + '/' + String(state.calMonth).padStart(2, '0') + '/01')) });
     });
   }
 

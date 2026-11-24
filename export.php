@@ -106,13 +106,13 @@ if ($type === 'tasks') {
              ORDER BY t.due_date ASC, t.id DESC'
         );
     }
-    $headers = ['کد تسک', 'عنوان', 'وضعیت', 'پیشرفت (%)', 'مسئول', 'ایجادکننده', 'تاریخ شروع (شمسی)', 'سررسید (شمسی)', 'ساعت سررسید', 'منشأ ایجاد'];
+    $headers = ['کد تسک', 'عنوان', 'وضعیت', 'پیشرفت (%)', 'مسئول', 'ایجادکننده', 'سررسید (شمسی)', 'ساعت سررسید', 'منشأ ایجاد'];
     $rows = [];
     foreach ($rowsDb as $r) {
         $rows[] = [
             $r['task_code'], $r['title'], task_status_label((string) $r['status']),
             fa_digits((int) $r['progress']), $r['assignee_name'] ?? '', $r['creator_name'] ?? '',
-            Jalali::toDateString($r['start_date'], true), Jalali::toDateString($r['due_date'], true),
+            Jalali::toDateString($r['due_date'], true),
             $r['due_time'] ? fa_digits($r['due_time']) : '', ($r['created_via'] === 'voice_ai' ? 'تسک صوتی هوش مصنوعی' : 'دستی'),
         ];
     }

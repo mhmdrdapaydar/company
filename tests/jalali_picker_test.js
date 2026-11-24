@@ -1,0 +1,25 @@
+// NODE_PATH=/path/to/jsdom node tests/jalali_picker_test.js
+const {JSDOM}=require('jsdom'),fs=require('fs'),assert=require('node:assert/strict');
+const dom=new JSDOM('<!doctype html><body><div class="field"><input id="date"></div><button id="outside">بیرون</button></body>',{runScripts:'outside-only'}),w=dom.window;
+w.APP={today:{gregorian:'2025-03-20'}};
+w.eval(fs.readFileSync('assets/js/jalali.js','utf8'));
+const J=w.JalaliJS,doc=w.document,input=doc.getElementById('date');
+assert.equal(J.parseToGregorian('۱۴۰۴/۰۱/۰۱'),'2025-03-21');
+assert.equal(J.parseToGregorian('1403/12/30'),'2025-03-20');
+assert.equal(J.parseToGregorian('1404/12/30'),null);
+assert.equal(J.parseToGregorian('2025-02-29'),null);
+assert.equal(J.parseToGregorian('٢٠٢٤/٠٢/٢٩'),'2024-02-29');
+J.attachDatePicker(input);J.attachDatePicker(input);
+assert.equal(doc.querySelectorAll('.date-picker-toggle').length,1);
+const btn=doc.querySelector('.date-picker-toggle'),panel=doc.querySelector('.jalali-picker');let changes=0;input.addEventListener('change',()=>changes++);
+input.value='۱۴۰۳/۱۲/۳۰';btn.click();assert(!panel.hidden);assert.equal(btn.getAttribute('aria-expanded'),'true');
+assert.equal(panel.querySelectorAll('[data-day]').length,30);assert.equal(panel.querySelector('.jalali-day.selected').dataset.day,'30');
+panel.querySelector('[data-nav=next]').click();assert.equal(panel.querySelector('[data-select=month]').value,'1');assert.equal(panel.querySelector('[data-select=year]').value,'1404');
+assert.equal(panel.querySelectorAll('[data-day]').length,31);panel.querySelector('[data-day="1"]').click();assert.equal(input.value,'۱۴۰۴/۰۱/۰۱');assert.equal(J.parseToGregorian(input.value),'2025-03-21');assert(panel.hidden);assert.equal(changes,1);
+btn.click();let month=panel.querySelector('[data-select=month]');month.value='12';month.dispatchEvent(new w.Event('change',{bubbles:true}));assert.equal(panel.querySelectorAll('[data-day]').length,29);
+panel.querySelector('[data-action=clear]').click();assert.equal(input.value,'');assert.equal(changes,2);
+btn.click();panel.querySelector('[data-action=today]').click();assert.equal(input.value,'۱۴۰۳/۱۲/۳۰');
+btn.click();doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(panel.hidden);assert.equal(doc.activeElement,btn);
+btn.click();doc.getElementById('outside').click();assert(panel.hidden);
+input.value='1404/02/31';btn.click();assert.equal(panel.querySelector('[data-select=month]').value,'2');assert.equal(panel.querySelector('.selected').dataset.day,'31');J.closeDatePicker();
+console.log('Jalali date picker, leap year, rollover, manual input, clear and keyboard: OK');dom.window.close();
