@@ -40,7 +40,7 @@ $csrf = csrf_token();
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="assets/icons/app-192.png">
 <title>ورود به سامانه | <?= e($companyName) ?></title>
-<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/app.css?v=<?= e(APP_VERSION) ?>">
 </head>
 <body class="login-body">
 <div class="login-wrap">
@@ -69,17 +69,6 @@ $csrf = csrf_token();
       </label>
       <button type="submit" class="btn btn-primary btn-block btn-lg">🔐 ورود به پنل مدیریت</button>
     </form>
-
-    <details class="demo-box">
-      <summary>🔑 حساب‌های نمونه برای تست فوری (پس از اولین اجرا)</summary>
-      <ul>
-        <li><strong>مدیر شرکت:</strong> نام کاربری <code>admin</code> — رمز <code>admin123</code></li>
-        <li><strong>سرپرست واحد:</strong> نام کاربری <code>sara</code> — رمز <code>123456</code></li>
-        <li><strong>کارمند:</strong> نام کاربری <code>ali</code> — رمز <code>123456</code></li>
-        <li>سایر کارمندان نمونه: <code>mina</code> و <code>amir</code> — رمز <code>123456</code></li>
-      </ul>
-      <p>در محیط واقعی، این حساب‌ها را از بخش «کارمندان» تغییر دهید یا حذف کنید.</p>
-    </details>
 
     <div class="login-foot">
       <span>تقویم شمسی • زبان فارسی • پایگاه داده SQL با پشتیبانی کامل فارسی</span>

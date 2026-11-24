@@ -105,7 +105,7 @@ $theme       = 'light';
   <!-- بخش اصلی -->
   <div class="main">
     <header class="topbar">
-      <button class="icon-btn menu-toggle" id="menuToggle" title="منو">☰</button>
+      <button class="icon-btn menu-toggle" id="menuToggle" title="منو" aria-label="باز کردن منو">☰</button>
       <h1 id="pageTitle">صفحه اصلی</h1>
       <div class="spacer"></div>
     </header>
