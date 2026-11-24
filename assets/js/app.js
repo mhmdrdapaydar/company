@@ -575,9 +575,7 @@
         (t.description ? '<div class="card" style="padding:12px;margin-bottom:12px;font-size:13px;white-space:pre-wrap">' + esc(t.description) + '</div>' : '') +
         '<div class="toolbar">' +
         '<button class="btn btn-sm btn-primary" data-act="edit">✏️ ویرایش</button>' +
-        (t.running_timer ? '<button class="btn btn-sm btn-danger" data-act="timer-stop">⏹️ توقف تایمر</button>' : '<button class="btn btn-sm" data-act="timer-start">⏱️ شروع تایمر</button>') +
         '<button class="btn btn-sm" data-act="advance">➡️ مرحله بعد</button>' +
-        '<button class="btn btn-sm" data-act="archive">' + (t.is_archived ? '♻️ بازگردانی' : '🗄️ بایگانی') + '</button>' +
         '<button class="btn btn-sm btn-danger" data-act="delete">🗑️ حذف</button>' +
         '</div>' +
         '<hr style="border:0;border-top:1px solid var(--border);margin:14px 0">' +
@@ -598,8 +596,7 @@
         '<div class="toolbar">' +
         '<button class="btn btn-sm btn-primary" data-act="comment-send">💬 ارسال نظر</button>' +
         '<button class="btn btn-sm" data-act="comment-voice">🎙️ ضبط نظر صوتی</button>' +
-        '</div>' +
-        (t.total_logged_minutes > 0 ? '<div class="small muted" style="margin-top:10px">⏱️ مجموع زمان ثبت‌شده: ' + esc(t.total_logged_fa) + '</div>' : '');
+        '</div>';
 
       $('#drawerBody').innerHTML = html;
       bindDrawer(t);
@@ -616,23 +613,12 @@
         if (act === 'edit') {
           closeDrawer();
           api('task_get', { id: t.id }).then(function (res) { openTaskForm(res.task); });
-        } else if (act === 'timer-start') {
-          api('timer_start', { task_id: t.id }).then(function (r) { toast(r.message || 'تایمر شروع شد.'); renderTaskDrawer(t.id); }).catch(function (e) { toast(e.message, 'error'); });
-        } else if (act === 'timer-stop') {
-          api('timer_stop', { task_id: t.id }).then(function (r) { toast(r.message || 'تایمر متوقف شد.'); renderTaskDrawer(t.id); }).catch(function (e) { toast(e.message, 'error'); });
         } else if (act === 'advance') {
           var order = ['in_progress', 'done'];
           var next = order[(order.indexOf(t.status) + 1) % order.length];
           api('task_update', { id: t.id, status: next }).then(function (r) {
             toast('وضعیت: ' + (r.task ? r.task.status_label : next));
             renderTaskDrawer(t.id);
-            if (state.section === 'tasks') loadTasks();
-            if (state.section === 'dashboard') loadDashboard();
-          }).catch(function (e) { toast(e.message, 'error'); });
-        } else if (act === 'archive') {
-          api('task_update', { id: t.id, is_archived: t.is_archived ? 0 : 1 }).then(function () {
-            toast(t.is_archived ? 'تسک بازگردانی شد.' : 'تسک بایگانی شد.');
-            closeDrawer();
             if (state.section === 'tasks') loadTasks();
             if (state.section === 'dashboard') loadDashboard();
           }).catch(function (e) { toast(e.message, 'error'); });
