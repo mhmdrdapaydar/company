@@ -424,11 +424,18 @@ try {
 
         case 'tasks_list': {
             $status = strtolower(clean_line($data['status'] ?? '', 20));
+            if (!in_array($status, ['', 'all', 'todo', 'not_done', 'in_progress', 'review', 'done'], true)) json_error('وضعیت تسک نامعتبر است.', 400);
+            $pageRaw = $data['page'] ?? '1';
+            if (!is_scalar($pageRaw) || !preg_match('/^[1-9][0-9]{0,5}$/D', (string) $pageRaw)) json_error('شماره صفحه نامعتبر است.', 400);
+            $page = (int) $pageRaw;
+            $perPage = 20;
+            $offset = ($page - 1) * $perPage;
             $search = clean_line($data['search'] ?? '', 100);
             $projectId = (int) ($data['project_id'] ?? 0);
             $assignedTo = (int) ($data['assigned_to'] ?? 0);
             $priority = strtolower(clean_line($data['priority'] ?? '', 20));
             $scope = strtolower(clean_line($data['scope'] ?? 'mine', 20));
+            if (!in_array($scope, ['mine', 'team', 'assigned'], true)) json_error('محدوده تسک نامعتبر است.', 400);
             $archived = (($_GET['archived'] ?? '0') === '1' || ($data['archived'] ?? '') === '1');
             $dueFrom = parse_date_input($data['due_from'] ?? null);
             $dueTo = parse_date_input($data['due_to'] ?? null);
@@ -443,10 +450,9 @@ try {
             } elseif ($scope === 'assigned' && $isManager) {
                 $where[] = 't.assigned_to = ?'; $params[] = $uid;
             }
-            if ($status !== '' && in_array($status, ['todo', 'in_progress', 'review', 'done'], true)) {
-                if ($status === 'in_progress' || $status === 'review') $where[] = "t.status IN ('in_progress', 'review')";
-                else { $where[] = 't.status = ?'; $params[] = $status; }
-            }
+            if ($status === 'not_done') $where[] = "t.status IN ('todo', 'in_progress', 'review')";
+            elseif ($status === 'in_progress' || $status === 'review') $where[] = "t.status IN ('in_progress', 'review')";
+            elseif ($status === 'todo' || $status === 'done') { $where[] = 't.status = ?'; $params[] = $status; }
             if ($priority !== '' && in_array($priority, ['low', 'medium', 'high', 'urgent'], true)) {
                 $where[] = 't.priority = ?'; $params[] = $priority;
             }
@@ -459,23 +465,36 @@ try {
                 $like = '%' . $search . '%';
                 $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
             }
+            $whereSql = implode(' AND ', $where);
+            $total = (int) Database::fetchValue('SELECT COUNT(*) FROM tasks t WHERE ' . $whereSql, $params, 0);
+            // LIMIT/OFFSET are validated integers, not client-provided SQL.
             $sql = 'SELECT t.*, a.full_name AS assignee_name, a.avatar_color AS assignee_color, c.full_name AS creator_name, p.name AS project_name, p.color AS project_color
                     FROM tasks t
                     LEFT JOIN users a ON a.id = t.assigned_to
                     LEFT JOIN users c ON c.id = t.created_by
                     LEFT JOIN projects p ON p.id = t.project_id
-                    WHERE ' . implode(' AND ', $where) . '
-                    ORDER BY CASE t.status WHEN \'todo\' THEN 0 WHEN \'in_progress\' THEN 1 WHEN \'review\' THEN 2 ELSE 3 END, t.due_date ASC, t.id DESC LIMIT 500';
+                    WHERE ' . $whereSql . "
+                    ORDER BY CASE WHEN t.status='todo' THEN 0 WHEN t.status IN ('in_progress','review') THEN 1 ELSE 2 END, t.due_date ASC, t.id DESC LIMIT " . $perPage . ' OFFSET ' . $offset;
             $rows = Database::fetchAll($sql, $params);
-            // شمارش زیرتسک‌ها
-            $rows = array_map(function ($t) {
+            $countsByTask = [];
+            if ($rows) {
+                $ids = array_map(static fn($r) => (int) $r['id'], $rows);
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                foreach (Database::fetchAll("SELECT task_id, COUNT(*) AS total, SUM(CASE WHEN is_done = 1 THEN 1 ELSE 0 END) AS done_count FROM task_subtasks WHERE task_id IN ({$placeholders}) GROUP BY task_id", $ids) as $count) {
+                    $countsByTask[(int) $count['task_id']] = $count;
+                }
+            }
+            $rows = array_map(function ($t) use ($countsByTask) {
                 $t = enrich_task($t);
-                $subs = Database::fetchAll('SELECT is_done FROM task_subtasks WHERE task_id = ?', [(int) $t['id']]);
-                $t['subtasks_total'] = count($subs);
-                $t['subtasks_done'] = count(array_filter($subs, fn($s) => (int) $s['is_done'] === 1));
+                $counts = $countsByTask[$t['id']] ?? [];
+                $t['subtasks_total'] = (int) ($counts['total'] ?? 0);
+                $t['subtasks_done'] = (int) ($counts['done_count'] ?? 0);
                 return $t;
             }, $rows);
-            json_success(['tasks' => $rows, 'count' => count($rows)]);
+            json_success(['tasks' => $rows, 'count' => count($rows), 'pagination' => [
+                'page' => $page, 'per_page' => $perPage, 'total' => $total,
+                'total_pages' => (int) ceil($total / $perPage), 'has_more' => ($offset + count($rows)) < $total,
+            ]]);
             break;
         }
 

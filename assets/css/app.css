@@ -756,3 +756,11 @@ pre,code{overflow-wrap:anywhere}
 }
 @media(prefers-reduced-motion:reduce){.stat-card,.stat-ico,.task-list-row,.btn,.modal{transition:none;animation:none}}
 .quick-voice-button.is-recording{background:linear-gradient(145deg,#ef4444,#be123c);box-shadow:0 0 0 8px rgba(225,29,72,.14),0 8px 22px rgba(190,18,60,.3)}
+.task-status-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.task-status-filters button{border:1px solid var(--border);border-radius:99px;padding:7px 14px;color:var(--muted);background:var(--card2);font:inherit;font-size:12px;font-weight:700}
+.task-status-filters button.active{background:var(--primary-soft);color:var(--primary);border-color:var(--primary)}
+.task-status-filters button:focus-visible,#taskLoadMore:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.task-pagination{text-align:center;padding:12px}
+.task-pagination[hidden],#taskLoadMore[hidden]{display:none}
+.task-pagination .btn{justify-content:center;min-height:44px}
+#taskLoadSentinel{display:block;height:1px}

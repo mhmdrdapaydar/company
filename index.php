@@ -141,8 +141,16 @@ $theme       = 'light';
               <span>🔍</span>
             </div>
           </div>
+          <div class="task-status-filters" role="group" aria-label="فیلتر وضعیت تسک">
+            <button type="button" data-task-status="all" class="active" aria-pressed="true">همه</button>
+            <button type="button" data-task-status="not_done" aria-pressed="false">تکمیل‌نشده</button>
+            <button type="button" data-task-status="todo" aria-pressed="false">در انتظار</button>
+            <button type="button" data-task-status="in_progress" aria-pressed="false">در حال انجام</button>
+            <button type="button" data-task-status="done" aria-pressed="false">تکمیل‌شده</button>
+          </div>
         </div>
         <div id="tasksListView"><div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div></div>
+        <div id="taskPagination" class="task-pagination" aria-live="polite" hidden><p id="taskPageInfo" class="small muted"></p><button type="button" class="btn" id="taskLoadMore">نمایش تسک‌های بیشتر</button><span id="taskLoadSentinel" aria-hidden="true"></span></div>
         <div id="tasksKanbanView" class="hidden">
           <div class="kanban" id="kanbanBoard"></div>
         </div>

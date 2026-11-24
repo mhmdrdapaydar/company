@@ -307,27 +307,67 @@
     var q = { scope: APP.user.is_manager ? 'team' : 'mine' };
     var s = $('#taskSearch').value.trim();
     if (s) q.search = s;
+    if (state.taskStatus && state.taskStatus !== 'all') q.status = state.taskStatus;
     return q;
   }
 
   var searchTimer = null;
   var taskRequestVersion = 0;
+  var taskPage = 0, taskHasMore = false, taskTotal = 0, taskLoading = false, taskQueryKey = '';
+  function updateTaskPagination() {
+    var wrap = $('#taskPagination'), button = $('#taskLoadMore');
+    wrap.hidden = !taskHasMore && !taskLoading && !taskPage;
+    $('#taskPageInfo').textContent = taskPage ? 'نمایش ' + FAT(state.tasks.length) + ' از ' + FAT(taskTotal) + ' تسک' : '';
+    button.hidden = !taskHasMore && !taskLoading;
+    button.disabled = taskLoading;
+    button.textContent = taskLoading ? 'در حال دریافت...' : 'نمایش تسک‌های بیشتر';
+  }
   function loadTasks(silent) {
     silent = silent === true;
+    // Keep already-loaded pages and scroll position intact during background refresh.
+    if (silent && (taskPage > 1 || taskLoading)) return;
     var version = ++taskRequestVersion;
-    var query = taskQuery();
-    var queryKey = JSON.stringify(query);
-    if (!silent) $('#tasksListView').innerHTML = '<div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div>';
-    api('tasks_list', query).then(function (res) {
+    var query = taskQuery(), queryKey = JSON.stringify(query);
+    taskQueryKey = queryKey; taskPage = 0; taskHasMore = false; taskLoading = true;
+    if (!silent) { state.tasks = []; $('#tasksListView').innerHTML = '<div class="loading"><div class="spinner"></div>در حال دریافت تسک‌ها...</div>'; }
+    updateTaskPagination();
+    api('tasks_list', Object.assign({}, query, {page: 1})).then(function (res) {
       if (version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
-      if (silent && (!canRefreshLive() || state.section !== 'tasks')) return;
+      if (silent && (!canRefreshLive() || state.section !== 'tasks')) { taskLoading = false; updateTaskPagination(); return; }
       state.tasks = res.tasks || [];
-      renderTasks();
+      taskPage = 1; taskTotal = res.pagination ? Number(res.pagination.total) : state.tasks.length;
+      taskHasMore = !!(res.pagination && res.pagination.has_more); taskLoading = false;
+      renderTasks(); updateTaskPagination();
+      observeTaskSentinel();
     }).catch(function (err) {
-      if (silent || version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
+      if (version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
+      taskLoading = false; updateTaskPagination();
+      if (silent) return;
       $('#tasksListView').innerHTML = emptyState('⚠️', err.message);
       toast(err.message, 'error');
     });
+  }
+  function loadMoreTasks() {
+    if (state.section !== 'tasks' || taskLoading || !taskHasMore || taskQueryKey !== JSON.stringify(taskQuery())) return;
+    var version = taskRequestVersion, queryKey = taskQueryKey, nextPage = taskPage + 1;
+    taskLoading = true; updateTaskPagination();
+    api('tasks_list', Object.assign({}, taskQuery(), {page: nextPage})).then(function (res) {
+      if (version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
+      var seen = new Set(state.tasks.map(function (t) { return Number(t.id); }));
+      (res.tasks || []).forEach(function (task) { if (!seen.has(Number(task.id))) { state.tasks.push(task); seen.add(Number(task.id)); } });
+      taskPage = nextPage; taskTotal = res.pagination ? Number(res.pagination.total) : state.tasks.length;
+      taskHasMore = !!(res.pagination && res.pagination.has_more); taskLoading = false;
+      renderTasks(); updateTaskPagination(); observeTaskSentinel();
+    }).catch(function (err) {
+      if (version !== taskRequestVersion || queryKey !== JSON.stringify(taskQuery())) return;
+      taskLoading = false; updateTaskPagination(); toast(err.message || 'دریافت تسک‌های بیشتر ناموفق بود.', 'error');
+    });
+  }
+  var taskObserver = null;
+  function observeTaskSentinel() {
+    if (!taskObserver) return;
+    taskObserver.unobserve($('#taskLoadSentinel'));
+    if (taskHasMore) taskObserver.observe($('#taskLoadSentinel'));
   }
 
   function renderTasks() {
@@ -416,8 +456,20 @@
   function initTaskToolbar() {
     $('#taskSearch').addEventListener('input', function () {
       clearTimeout(searchTimer);
+      ++taskRequestVersion; taskLoading = false; taskHasMore = false; taskPage = 0; updateTaskPagination();
       searchTimer = setTimeout(loadTasks, 380);
     });
+    $$('[data-task-status]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        clearTimeout(searchTimer); state.taskStatus = this.getAttribute('data-task-status');
+        $$('[data-task-status]').forEach(function (b) { var active = b === button; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
+        loadTasks();
+      });
+    });
+    $('#taskLoadMore').addEventListener('click', loadMoreTasks);
+    if ('IntersectionObserver' in window) {
+      taskObserver = new IntersectionObserver(function (entries) { if (entries.some(function (entry) { return entry.isIntersecting; })) loadMoreTasks(); }, {rootMargin:'200px'});
+    }
     ['#taskScope', '#taskStatusFilter', '#taskUserFilter'].forEach(function (s) {
       var el = $(s);
       if (el) el.addEventListener('change', loadTasks);

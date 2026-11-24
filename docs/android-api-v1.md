@@ -40,7 +40,7 @@ https://best-zone.ir/company/
 | متد | action | ورودی مهم | خروجی مهم |
 |---|---|---|---|
 | GET | `me` | — | `user`, `today`, `settings`, `is_manager`, `is_admin` (مقدار `csrf_token` در موبایل تهی است) |
-| GET | `tasks_list` | اختیاری: `scope=mine|assigned|team`, `status`, `search`, `assigned_to`, `due_from`, `due_to` | `tasks`, `count`؛ `team` و فیلتر کارمند برای مدیر است |
+| GET | `tasks_list` | اختیاری: `page`, `scope=mine|assigned|team`, `status=all|todo|not_done|in_progress|done`, `search`, `assigned_to`, `due_from`, `due_to` | حداکثر ۲۰ `tasks`، `count` و `pagination`؛ `team` و فیلتر کارمند برای مدیر است |
 | GET | `task_get` | `id` | `task` همراه با جزئیات، نظرها و پیوست‌ها در محدودهٔ مجاز |
 | POST | `task_create` | `title`, `assigned_to`، اختیاری `description`, `due_date`, `due_time` | `task`, `ids` |
 | POST | `task_update` | `id` و فیلدهای تغییرکرده، از جمله `status=todo|in_progress|done` | `task` |
@@ -174,13 +174,43 @@ curl -G "$BASE/mobile-v1.php" -H "Authorization: Bearer $TOKEN" \
 curl "$BASE/mobile-v1.php?action=assignable" -H "Authorization: Bearer $TOKEN"
 ```
 
-فیلترهای اختیاری `tasks_list`: `status`، `priority`، `scope`، `search`، `assigned_to`، `project_id`، `due_from`، `due_to` و `archived=1`. دامنهٔ پیش‌فرض `mine` است (مسئول یا سازنده). `team` برای مدیر همهٔ تسک‌ها و `assigned` برای مدیر فقط تسک‌های محول به خود را برمی‌گرداند؛ کارمند به دامنهٔ خودش محدود می‌ماند. فیلتر مسئول فقط برای مدیر اعمال می‌شود. حداکثر ۵۰۰ نتیجه برمی‌گردد و صفحه‌بندی در نسخهٔ ۱ وجود ندارد. فیلترهای نامعتبر وضعیت، اولویت یا تاریخ ممکن است نادیده گرفته شوند؛ قبل از ارسال اعتبارسنجی کنید.
+فیلترهای اختیاری `tasks_list`: `status`، `priority`، `scope`، `search`، `assigned_to`، `project_id`، `due_from`، `due_to` و `archived=1`. دامنهٔ پیش‌فرض `mine` است (مسئول یا سازنده). `team` برای مدیر همهٔ تسک‌ها و `assigned` برای مدیر فقط تسک‌های محول به خود را برمی‌گرداند؛ کارمند به دامنهٔ خودش محدود می‌ماند. فیلتر مسئول فقط برای مدیر اعمال می‌شود. در هر درخواست حداکثر ۲۰ تسک برمی‌گردد؛ برای نتیجه‌های بیشتر بخش صفحه‌بندی زیر را ببینید. وضعیت یا محدودهٔ نامعتبر خطای ۴۰۰ می‌دهد؛ اولویت یا تاریخ نامعتبر ممکن است نادیده گرفته شود، پس قبل از ارسال اعتبارسنجی کنید.
 
 پاسخ فهرست نمونه:
 
 ```json
-{"ok":true,"tasks":[{"id":123,"title":"جلسه هماهنگی","status":"todo","priority":"medium","assigned_to":3,"created_by":2,"due_date":"2026-12-01","due_time":"10:30","voice_url":null}],"count":1}
+{"ok":true,"tasks":[{"id":123,"title":"جلسه هماهنگی","status":"todo","priority":"medium","assigned_to":3,"created_by":2,"due_date":"2026-12-01","due_time":"10:30","voice_url":null}],"count":1,"pagination":{"page":3,"per_page":20,"total":41,"total_pages":3,"has_more":false}}
 ```
+
+### صفحه‌بندی و فیلتر وضعیت `tasks_list`
+
+**تغییر مهم قرارداد:** از این نسخه، درخواست بدون `page` فقط صفحهٔ اول را می‌دهد، نه همهٔ تسک‌ها. برنامه‌های قبلی که صرفاً `tasks` را می‌خوانند باید برای دریافت بقیه صفحه‌ها به‌روزرسانی شوند. این تغییر پس از استقرار نسخهٔ جدید روی سرور فعال می‌شود؛ هم endpoint موبایل و هم API پنل از همین رفتار استفاده می‌کنند.
+
+| پارامتر | مفهوم |
+|---|---|
+| `page` | شمارهٔ صفحه از ۱ تا ۹۹۹۹۹۹؛ پیش‌فرض ۱. صفحهٔ نامعتبر HTTP 400 دارد. هر صفحه ثابت و حداکثر ۲۰ مورد است. |
+| `status=all` یا بدون `status` | همهٔ وضعیت‌ها در محدودهٔ دسترسی کاربر |
+| `status=todo` | در انتظار / هنوز شروع نشده |
+| `status=in_progress` | در حال انجام؛ وضعیت قدیمی `review` هم در این گروه است |
+| `status=done` | تکمیل‌شده |
+| `status=not_done` | همهٔ تسک‌های تکمیل‌نشده: در انتظار و در حال انجام |
+
+در فیلد `pagination`، `page` صفحهٔ فعلی، `per_page` عدد ثابت ۲۰، `total` تعداد کل نتایج **پس از اعمال فیلترها و مجوزها**، `total_pages` تعداد صفحه‌ها و `has_more` مشخص‌کنندهٔ وجود صفحهٔ بعد است. `count` فقط تعداد آیتم‌های همین صفحه است، نه کل. برای نتیجهٔ خالی `total_pages` صفر و `has_more` برابر false است؛ صفحهٔ بزرگ‌تر از آخرین صفحه نیز آرایهٔ خالی برمی‌گرداند. فیلتر `status=review` صرفاً برای سازگاری قدیمی مثل `in_progress` رفتار می‌کند و در پاسخ وضعیت آن `in_progress` است.
+
+نمونهٔ دریافت صفحهٔ اول و دومِ تسک‌های تکمیل‌نشده؛ هنگام رفتن به صفحهٔ بعد **همهٔ فیلترهای قبلی را ثابت نگه دارید**:
+
+```bash
+curl -G "$BASE/mobile-v1.php" -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'action=tasks_list' --data-urlencode 'scope=mine' \
+  --data-urlencode 'status=not_done' --data-urlencode 'page=1'
+curl -G "$BASE/mobile-v1.php" -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'action=tasks_list' --data-urlencode 'scope=mine' \
+  --data-urlencode 'status=not_done' --data-urlencode 'page=2'
+```
+
+برای تسک‌های در انتظار، در حال انجام یا تکمیل‌شده به‌ترتیب از `status=todo`، `status=in_progress` یا `status=done` استفاده کنید. در پنل، با نزدیک‌شدن به انتهای نتایج صفحهٔ بعد درخواست می‌شود و دکمهٔ «نمایش تسک‌های بیشتر» نیز در دسترس است. در اندروید هم می‌توانید هنگام نزدیک‌شدن به انتهای RecyclerView، اگر `has_more` درست و درخواست دیگری در حال اجرا نیست، `page + 1` را بخوانید؛ در تغییر جست‌وجو/فیلتر فهرست را پاک و از صفحهٔ ۱ شروع کنید. از افزودن پاسخ‌های قدیمی بعد از تغییر فیلتر جلوگیری کنید.
+
+مرتب‌سازی به‌ترتیب وضعیت (در انتظار، در حال انجام، تکمیل‌شده)، سررسید و شناسه است. صفحه‌بندی بر اساس offset است، نه snapshot: اگر هم‌زمان تسکی ایجاد، حذف یا ویرایش شود، ممکن است آیتمی بین صفحه‌ها جابه‌جا، تکرار یا موقتاً جا بیفتد. شناسه‌ها را هنگام افزودن تکراری نکنید و برای مشاهدهٔ دادهٔ قطعی/تازه از صفحهٔ اول دوباره بارگذاری کنید. این API endpoint دریافت نامحدود همهٔ تسک‌ها در یک پاسخ ندارد.
 
 `task_get` یک `task` با اطلاعات تکمیلی و آرایه‌های `subtasks`، `comments`، `attachments` و `time_logs` برمی‌گرداند. برای فایل از URLهای برگردانده‌شده و توکن استفاده کنید.
 
