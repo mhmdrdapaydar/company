@@ -1483,14 +1483,23 @@
         timer = setTimeout(function () {
           if (pointer === null) return;
           held = true; suppressClick = true;
-          VoiceAI.open();
-          VoiceAI.startRecord(function () { return pointer !== null && held; });
+          VoiceAI.reset();
+          $('#voiceAutoCreate').checked = false; // نگه‌داشتن همیشه به پیش‌نمایش نیاز دارد
+          VoiceAI.homeHoldActive = true;
+          button.classList.add('is-recording');
+          $('#homeVoiceHint').textContent = 'در حال دریافت اجازهٔ میکروفون…';
+          VoiceAI.startRecord(function () { return pointer !== null && held; }, true);
         }, 450);
       });
       function release(e) {
         if (pointer === null || e.pointerId !== pointer) return;
         clearTimeout(timer); pointer = null;
-        if (held) { held = false; VoiceAI.stopRecord(); setTimeout(function () { suppressClick = false; }, 500); }
+        if (held) {
+          held = false; VoiceAI.homeHoldActive = false; button.classList.remove('is-recording');
+          $('#homeVoiceHint').textContent = 'برای ضبط نگه دارید؛ برای ورود به بخش صوتی بزنید';
+          VoiceAI.finishHomeRecording();
+          setTimeout(function () { suppressClick = false; }, 500);
+        }
       }
       window.addEventListener('pointerup', release);
       window.addEventListener('pointercancel', release);
@@ -1498,7 +1507,7 @@
       button.addEventListener('contextmenu', function (e) { e.preventDefault(); });
       button.addEventListener('click', function () {
         if (suppressClick || held) { suppressClick = false; return; }
-        VoiceAI.open(); VoiceAI.startRecord();
+        VoiceAI.open();
       });
     })();
     $('#homeTaskTitle').addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.max(90, this.scrollHeight) + 'px'; });
@@ -1515,6 +1524,10 @@
       projects: APP.projects,
       isManager: APP.user.is_manager,
       autoCreate: false,
+      onHomeRecording: function (status, elapsed) {
+        if (!VoiceAI.homeHoldActive) return;
+        $('#homeVoiceHint').textContent = status === 'recording' ? '🔴 در حال ضبط ' + (elapsed || '۰۰:۰۰') + ' — برای پایان رها کنید' : status === 'stopped' ? 'ضبط به پایان رسید؛ برای بررسی رها کنید' : 'ضبط شروع نشد؛ رها کنید و دوباره تلاش کنید';
+      },
       onCreated: function (res) {
         var count = (res.tasks || res.ids || []).length;
         toast('🎉 ' + FAT(count) + ' تسک صوتی در تقویم شمسی ثبت شد.', 'success');

@@ -128,7 +128,7 @@ $theme       = 'light';
             <button class="btn btn-primary" type="submit">ثبت تسک</button>
             <button class="btn" type="button" id="homeTaskDetails">ثبت تسک به صورت دستی</button>
           </form>
-          <div class="quick-voice"><button type="button" id="homeVoice" class="quick-voice-button" aria-label="ثبت تسک صوتی" aria-describedby="homeVoiceHint">🎙️</button><span id="homeVoiceHint">برای ضبط نگه دارید؛ برای ورود به بخش صوتی بزنید</span></div>
+          <div class="quick-voice"><button type="button" id="homeVoice" class="quick-voice-button" aria-label="ثبت تسک صوتی" aria-describedby="homeVoiceHint">🎙️</button><span id="homeVoiceHint" role="status" aria-live="polite">برای ضبط نگه دارید؛ برای ورود به بخش صوتی بزنید</span></div>
         </div>
       </section>
 

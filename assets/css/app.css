@@ -755,3 +755,4 @@ pre,code{overflow-wrap:anywhere}
   .jalali-day{min-height:40px}
 }
 @media(prefers-reduced-motion:reduce){.stat-card,.stat-ico,.task-list-row,.btn,.modal{transition:none;animation:none}}
+.quick-voice-button.is-recording{background:linear-gradient(145deg,#ef4444,#be123c);box-shadow:0 0 0 8px rgba(225,29,72,.14),0 8px 22px rgba(190,18,60,.3)}

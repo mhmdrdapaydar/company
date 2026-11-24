@@ -163,16 +163,22 @@
 
     open: function (prefill) {
       this.reset();
+      this.show();
       if (prefill && prefill.transcript) {
         document.getElementById('voiceTranscript').value = prefill.transcript;
         this.finalTranscript = prefill.transcript;
       }
+    },
+
+    // Open an existing recording without resetting it.
+    show: function () {
       this.el.classList.add('open');
       document.body.style.overflow = 'hidden';
       setTimeout(function () { drawIdleWave(document.getElementById('waveCanvas')); }, 60);
     },
 
     close: function () {
+      this.pendingHomeProcess = false;
       if (window.JalaliJS && window.JalaliJS.closeDatePicker) window.JalaliJS.closeDatePicker();
       this.stopRecord(true);
       this.el.classList.remove('open');
@@ -180,6 +186,10 @@
     },
 
     reset: function () {
+      this.pendingHomeProcess = false;
+      this.homeRecordingStarted = false;
+      this.homeRecordingFinished = false;
+      this.homeHoldActive = false;
       this.stopRecord(true);
       this.audioBlob = null;
       if (this.audioUrl) { URL.revokeObjectURL(this.audioUrl); this.audioUrl = null; }
@@ -216,12 +226,13 @@
       else this.startRecord();
     },
 
-    startRecord: function (shouldStart) {
+    startRecord: function (shouldStart, holdMode) {
       var self = this;
       var requestId = (this.recordRequestId || 0) + 1;
       this.recordRequestId = requestId;
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         toast('مرورگر شما از ضبط صدا پشتیبانی نمی‌کند. می‌توانید فایل صوتی آپلود کنید یا متن بنویسید.', 'error');
+        if (holdMode && self.options.onHomeRecording) self.options.onHomeRecording('error');
         return;
       }
       return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
@@ -239,24 +250,29 @@
         } catch (err) {
           toast('خطا در راه‌اندازی ضبط صدا: ' + err.message, 'error');
           self.stopStream();
+          if (holdMode && self.options.onHomeRecording) self.options.onHomeRecording('error');
           return;
         }
         self.recorder.ondataavailable = function (e) { if (e.data && e.data.size > 0) self.chunks.push(e.data); };
         self.recorder.onstop = function () { self.finishRecording(); };
         self.recorder.start(250);
         self.recording = true;
+        if (holdMode) self.homeRecordingStarted = true;
         self.seconds = 0;
         self.setRecordingUI(true);
         self.startWaveform(stream);
         self.startTimer();
         self.startBrowserSpeech(false);
         // 🎙️ تشخیص خودکار پایان گفتار (VAD) — بدون هیچ سرویس بیرونی
-        self.startAutoStopVad();
+        if (!holdMode) self.startAutoStopVad();
+        if (holdMode && self.options.onHomeRecording) self.options.onHomeRecording('recording');
       }).catch(function (err) {
+        if (self.recordRequestId !== requestId) return;
         var msg = 'دسترسی به میکروفن امکان‌پذیر نیست.';
         if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) msg = 'اجازه دسترسی به میکروفن داده نشد. از تنظیمات مرورگر اجازه دهید (سایت باید HTTPS باشد).';
         else if (err && err.name === 'NotFoundError') msg = 'میکروفنی روی این دستگاه پیدا نشد.';
         toast(msg, 'error');
+        if (holdMode && self.options.onHomeRecording) self.options.onHomeRecording('error');
       });
     },
 
@@ -303,6 +319,7 @@
     stopRecord: function (silent) {
       this.recordRequestId = (this.recordRequestId || 0) + 1;
       var self = this;
+      if (this.recorder && silent) this.recorder.onstop = null;
       if (this.recorder && this.recorder.state !== 'inactive') {
         try { this.recorder.stop(); } catch (e) {}
       }
@@ -321,6 +338,7 @@
           self.speechStopTimer = null;
           self.stopBrowserSpeech();
           self.finalizeTranscript();
+          self.maybeProcessHomeRecording();
         }, 1400);
       }
 
@@ -364,7 +382,12 @@
 
     finishRecording: function () {
       var self = this;
-      if (!this.chunks.length) return;
+      if (this.homeRecordingStarted) this.homeRecordingFinished = true;
+      if (!this.chunks.length) {
+        this.stopStream();
+        if (this.pendingHomeProcess) { this.pendingHomeProcess = false; this.hideProcessing(); document.getElementById('recStatus').textContent = 'صدایی ضبط نشد. دوباره تلاش کنید یا متن را بنویسید.'; }
+        return;
+      }
       var type = (this.recorder && this.recorder.mimeType) || 'audio/webm';
       this.audioBlob = new Blob(this.chunks, { type: type.indexOf('mp4') >= 0 ? 'audio/mp4' : 'audio/webm' });
       if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
@@ -380,6 +403,28 @@
         box.value = this.finalTranscript.trim();
       }
       drawIdleWave(document.getElementById('waveCanvas'));
+      this.maybeProcessHomeRecording();
+    },
+
+    finishHomeRecording: function () {
+      var waitingForAudio = !!this.homeRecordingStarted && !this.homeRecordingFinished && !this.audioBlob;
+      var hasAudio = !!this.audioBlob;
+      this.show();
+      if (!waitingForAudio && !hasAudio) {
+        this.stopRecord(true);
+        document.getElementById('recStatus').textContent = 'ضبطی آماده نشد. دسترسی میکروفون را بررسی کنید و دوباره تلاش کنید.';
+        return;
+      }
+      this.pendingHomeProcess = true;
+      this.stopRecord();
+      this.showProcessing('در حال آماده‌سازی و بررسی صدای ضبط‌شده...');
+      this.maybeProcessHomeRecording();
+    },
+
+    maybeProcessHomeRecording: function () {
+      if (!this.pendingHomeProcess || !this.audioBlob || this.speechStopTimer) return;
+      this.pendingHomeProcess = false;
+      this.process(false);
     },
 
     stopStream: function () {
@@ -402,8 +447,10 @@
       this.timerId = setInterval(function () {
         self.seconds++;
         var m = Math.floor(self.seconds / 60), s = self.seconds % 60;
-        document.getElementById('recTimer').textContent = FAT(String(m).padStart(2, '0')) + ':' + FAT(String(s).padStart(2, '0'));
-        if (self.seconds >= 180) { self.stopRecord(); toast('حداکثر زمان ضبط ۳ دقیقه است.', 'info'); }
+        var elapsed = FAT(String(m).padStart(2, '0')) + ':' + FAT(String(s).padStart(2, '0'));
+        document.getElementById('recTimer').textContent = elapsed;
+        if (self.options.onHomeRecording && self.homeHoldActive) self.options.onHomeRecording('recording', elapsed);
+        if (self.seconds >= 180) { self.stopRecord(); if (self.homeHoldActive && self.options.onHomeRecording) self.options.onHomeRecording('stopped'); toast('حداکثر زمان ضبط ۳ دقیقه است.', 'info'); }
       }, 1000);
     },
     stopTimer: function () { if (this.timerId) { clearInterval(this.timerId); this.timerId = null; } },
@@ -715,6 +762,7 @@
               var fd2 = new FormData();
               fd2.append('transcript', text);
               fd2.append('voice_duration_sec', String(self.seconds || 0));
+              if (self.audioBlob) fd2.append('audio', self.audioBlob, 'voice.' + ((self.audioBlob.type && self.audioBlob.type.indexOf('mp4') >= 0) ? 'm4a' : 'webm'));
               document.getElementById('voiceTranscript').value = text;
               return self.api('voice_preview', fd2, { form: true }).then(function (res) {
                 self.finishPreview(res, text, ' + تشخیص گفتار مرورگر (Puter)');
