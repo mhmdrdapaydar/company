@@ -99,7 +99,7 @@
     return '<div class="avatar ' + (extra || '') + '" style="background:' + esc(color || '#0f766e') + '" title="' + esc(name) + '">' + esc(initials(name)) + '</div>';
   }
   function statusBadge(status, label) {
-    var map = { todo: 'در انتظار', in_progress: 'در حال انجام', review: 'در حال انجام', done: 'انجام شده' };
+    var map = { todo: 'در حال انجام', in_progress: 'در حال انجام', review: 'در حال انجام', done: 'انجام شده' };
     return '<span class="badge badge-' + esc(status) + '">' + esc(label || map[status] || status) + '</span>';
   }
   function dueBadge(t) {
@@ -194,7 +194,7 @@
   function renderDashStats(d) {
     var cards = [
       { ico: '📋', bg: 'linear-gradient(135deg,#ccfbf1,#99f6e4)', color: '#0f766e', num: d.total, label: 'کل تسک‌ها', sub: 'نرخ تکمیل ' + FAT(d.completion_rate) + '٪' },
-      { ico: '🔵', bg: 'linear-gradient(135deg,#dbeafe,#bfdbfe)', color: '#1d4ed8', num: d.by_status.in_progress, label: 'در حال انجام', sub: 'در انتظار: ' + FAT(d.by_status.todo) },
+      { ico: '🔵', bg: 'linear-gradient(135deg,#dbeafe,#bfdbfe)', color: '#1d4ed8', num: d.by_status.in_progress, label: 'در حال انجام', sub: 'تسک‌های فعال' },
       { ico: '⏰', bg: 'linear-gradient(135deg,#fee2e2,#fecaca)', color: '#b91c1c', num: d.overdue, label: 'عقب‌افتاده', sub: 'سررسید امروز: ' + FAT(d.due_today) },
       { ico: '✅', bg: 'linear-gradient(135deg,#d1fae5,#a7f3d0)', color: '#047857', num: d.done_week, label: 'تکمیل در ۷ روز', sub: 'انجام‌شده کل: ' + FAT(d.by_status.done) }
     ];
@@ -402,7 +402,6 @@
   }
 
   var COLS = [
-    { key: 'todo', title: '📌 در انتظار', cls: 'todo' },
     { key: 'in_progress', title: '🔄 در حال انجام', cls: 'in_progress' },
     { key: 'done', title: '✅ انجام شده', cls: 'done' }
   ];
@@ -494,7 +493,7 @@
     $('#tfDescription').value = task ? (task.description || '') : (prefill && prefill.description) || '';
     $('#tfAssignee').value = String(task ? task.assigned_to : (prefill && prefill.assigned_to) || APP.user.id);
     var multi = $('#tfMultiWrap'); if (multi) { multi.hidden = !!task; $('#tfAll').checked = false; Array.from($('#tfAssignees').options).forEach(function (o) { o.selected = false; }); }
-    $('#tfStatus').value = task ? task.status : 'todo';
+    $('#tfStatus').value = task ? task.status : 'in_progress';
     $('#tfDueDate').value = task ? (task.due_date ? J.gregorianToJalaliInput(task.due_date) : '') : ((prefill && prefill.due_date_jalali) || APP.today.jalali);
     $('#tfDueTime').value = task && task.due_time ? task.due_time : (prefill && prefill.due_time) || '';
     $('#tfRecurrence').value = task ? (task.recurrence || 'none') : 'none';
@@ -622,7 +621,7 @@
         } else if (act === 'timer-stop') {
           api('timer_stop', { task_id: t.id }).then(function (r) { toast(r.message || 'تایمر متوقف شد.'); renderTaskDrawer(t.id); }).catch(function (e) { toast(e.message, 'error'); });
         } else if (act === 'advance') {
-          var order = ['todo', 'in_progress', 'done'];
+          var order = ['in_progress', 'done'];
           var next = order[(order.indexOf(t.status) + 1) % order.length];
           api('task_update', { id: t.id, status: next }).then(function (r) {
             toast('وضعیت: ' + (r.task ? r.task.status_label : next));

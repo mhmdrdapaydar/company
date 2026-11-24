@@ -144,7 +144,6 @@ $theme       = 'light';
           <div class="task-status-filters" role="group" aria-label="فیلتر وضعیت تسک">
             <button type="button" data-task-status="all" class="active" aria-pressed="true">همه</button>
             <button type="button" data-task-status="not_done" aria-pressed="false">تکمیل‌نشده</button>
-            <button type="button" data-task-status="todo" aria-pressed="false">در انتظار</button>
             <button type="button" data-task-status="in_progress" aria-pressed="false">در حال انجام</button>
             <button type="button" data-task-status="done" aria-pressed="false">تکمیل‌شده</button>
           </div>
@@ -360,7 +359,7 @@ $theme       = 'light';
           <?php endforeach; ?>
         </select></label>
         <label class="field"><span>وضعیت</span><select id="tfStatus">
-          <option value="todo">در انتظار</option><option value="in_progress">در حال انجام</option>
+          <option value="in_progress">در حال انجام</option>
           <option value="done">انجام شده</option>
         </select></label>
       </div>

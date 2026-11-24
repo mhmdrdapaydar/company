@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `task_code` VARCHAR(50) NOT NULL,
     `title` VARCHAR(255) NOT NULL,
     `description` MEDIUMTEXT NULL,
-    `status` VARCHAR(20) NOT NULL DEFAULT 'todo',
+    `status` VARCHAR(20) NOT NULL DEFAULT 'in_progress',
     `priority` VARCHAR(20) NOT NULL DEFAULT 'medium',
     `progress` TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `project_id` INT UNSIGNED NULL DEFAULT NULL,

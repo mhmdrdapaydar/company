@@ -40,10 +40,10 @@ https://best-zone.ir/company/
 | متد | action | ورودی مهم | خروجی مهم |
 |---|---|---|---|
 | GET | `me` | — | `user`, `today`, `settings`, `is_manager`, `is_admin` (مقدار `csrf_token` در موبایل تهی است) |
-| GET | `tasks_list` | اختیاری: `page`, `scope=mine|assigned|team`, `status=all|todo|not_done|in_progress|done`, `search`, `assigned_to`, `due_from`, `due_to` | حداکثر ۲۰ `tasks`، `count` و `pagination`؛ `team` و فیلتر کارمند برای مدیر است |
+| GET | `tasks_list` | اختیاری: `page`, `scope=mine|assigned|team`, `status=all|not_done|in_progress|done`, `search`, `assigned_to`, `due_from`, `due_to` | حداکثر ۲۰ `tasks`، `count` و `pagination`؛ `team` و فیلتر کارمند برای مدیر است |
 | GET | `task_get` | `id` | `task` همراه با جزئیات، نظرها و پیوست‌ها در محدودهٔ مجاز |
 | POST | `task_create` | `title`, `assigned_to`، اختیاری `description`, `due_date`, `due_time` | `task`, `ids` |
-| POST | `task_update` | `id` و فیلدهای تغییرکرده، از جمله `status=todo|in_progress|done` | `task` |
+| POST | `task_update` | `id` و فیلدهای تغییرکرده، از جمله `status=in_progress|done` | `task` |
 | POST | `task_delete` | `id` | وضعیت حذف؛ فقط سازنده یا مدیر شرکت |
 | GET | `assignable` | — | `users` قابل انتخاب برای کاربر فعلی |
 | GET | `calendar_today` | — | `date`, `date_human`, `tasks` |
@@ -168,7 +168,7 @@ curl -X POST "$BASE/mobile-v1.php?action=logout" \
 ```bash
 curl -G "$BASE/mobile-v1.php" -H "Authorization: Bearer $TOKEN" \
   --data-urlencode 'action=tasks_list' --data-urlencode 'scope=mine' \
-  --data-urlencode 'status=todo' --data-urlencode 'search=جلسه'
+  --data-urlencode 'status=in_progress' --data-urlencode 'search=جلسه'
 curl -G "$BASE/mobile-v1.php" -H "Authorization: Bearer $TOKEN" \
   --data-urlencode 'action=task_get' --data-urlencode 'id=123'
 curl "$BASE/mobile-v1.php?action=assignable" -H "Authorization: Bearer $TOKEN"
@@ -179,7 +179,7 @@ curl "$BASE/mobile-v1.php?action=assignable" -H "Authorization: Bearer $TOKEN"
 پاسخ فهرست نمونه:
 
 ```json
-{"ok":true,"tasks":[{"id":123,"title":"جلسه هماهنگی","status":"todo","priority":"medium","assigned_to":3,"created_by":2,"due_date":"2026-12-01","due_time":"10:30","voice_url":null}],"count":1,"pagination":{"page":3,"per_page":20,"total":41,"total_pages":3,"has_more":false}}
+{"ok":true,"tasks":[{"id":123,"title":"جلسه هماهنگی","status":"in_progress","priority":"medium","assigned_to":3,"created_by":2,"due_date":"2026-12-01","due_time":"10:30","voice_url":null}],"count":1,"pagination":{"page":3,"per_page":20,"total":41,"total_pages":3,"has_more":false}}
 ```
 
 ### صفحه‌بندی و فیلتر وضعیت `tasks_list`
@@ -190,12 +190,11 @@ curl "$BASE/mobile-v1.php?action=assignable" -H "Authorization: Bearer $TOKEN"
 |---|---|
 | `page` | شمارهٔ صفحه از ۱ تا ۹۹۹۹۹۹؛ پیش‌فرض ۱. صفحهٔ نامعتبر HTTP 400 دارد. هر صفحه ثابت و حداکثر ۲۰ مورد است. |
 | `status=all` یا بدون `status` | همهٔ وضعیت‌ها در محدودهٔ دسترسی کاربر |
-| `status=todo` | در انتظار / هنوز شروع نشده |
-| `status=in_progress` | در حال انجام؛ وضعیت قدیمی `review` هم در این گروه است |
+| `status=in_progress` | در حال انجام؛ رکوردهای قدیمی `todo` و `review` نیز در این گروه‌اند |
 | `status=done` | تکمیل‌شده |
-| `status=not_done` | همهٔ تسک‌های تکمیل‌نشده: در انتظار و در حال انجام |
+| `status=not_done` | همهٔ تسک‌های تکمیل‌نشده؛ معادل در حال انجام |
 
-در فیلد `pagination`، `page` صفحهٔ فعلی، `per_page` عدد ثابت ۲۰، `total` تعداد کل نتایج **پس از اعمال فیلترها و مجوزها**، `total_pages` تعداد صفحه‌ها و `has_more` مشخص‌کنندهٔ وجود صفحهٔ بعد است. `count` فقط تعداد آیتم‌های همین صفحه است، نه کل. برای نتیجهٔ خالی `total_pages` صفر و `has_more` برابر false است؛ صفحهٔ بزرگ‌تر از آخرین صفحه نیز آرایهٔ خالی برمی‌گرداند. فیلتر `status=review` صرفاً برای سازگاری قدیمی مثل `in_progress` رفتار می‌کند و در پاسخ وضعیت آن `in_progress` است.
+در فیلد `pagination`، `page` صفحهٔ فعلی، `per_page` عدد ثابت ۲۰، `total` تعداد کل نتایج **پس از اعمال فیلترها و مجوزها**، `total_pages` تعداد صفحه‌ها و `has_more` مشخص‌کنندهٔ وجود صفحهٔ بعد است. `count` فقط تعداد آیتم‌های همین صفحه است، نه کل. برای نتیجهٔ خالی `total_pages` صفر و `has_more` برابر false است؛ صفحهٔ بزرگ‌تر از آخرین صفحه نیز آرایهٔ خالی برمی‌گرداند. فیلترهای قدیمی `status=todo` و `status=review` صرفاً برای سازگاری مانند `in_progress` رفتار می‌کنند و در پاسخ وضعیت آن‌ها `in_progress` است؛ بنابراین رفتار `todo` نسبت به نسخهٔ قبل تغییر کرده است.
 
 نمونهٔ دریافت صفحهٔ اول و دومِ تسک‌های تکمیل‌نشده؛ هنگام رفتن به صفحهٔ بعد **همهٔ فیلترهای قبلی را ثابت نگه دارید**:
 
@@ -208,9 +207,9 @@ curl -G "$BASE/mobile-v1.php" -H "Authorization: Bearer $TOKEN" \
   --data-urlencode 'status=not_done' --data-urlencode 'page=2'
 ```
 
-برای تسک‌های در انتظار، در حال انجام یا تکمیل‌شده به‌ترتیب از `status=todo`، `status=in_progress` یا `status=done` استفاده کنید. در پنل، با نزدیک‌شدن به انتهای نتایج صفحهٔ بعد درخواست می‌شود و دکمهٔ «نمایش تسک‌های بیشتر» نیز در دسترس است. در اندروید هم می‌توانید هنگام نزدیک‌شدن به انتهای RecyclerView، اگر `has_more` درست و درخواست دیگری در حال اجرا نیست، `page + 1` را بخوانید؛ در تغییر جست‌وجو/فیلتر فهرست را پاک و از صفحهٔ ۱ شروع کنید. از افزودن پاسخ‌های قدیمی بعد از تغییر فیلتر جلوگیری کنید.
+برای تسک‌های در حال انجام یا تکمیل‌شده به‌ترتیب از `status=in_progress` یا `status=done` استفاده کنید. در پنل، با نزدیک‌شدن به انتهای نتایج صفحهٔ بعد درخواست می‌شود و دکمهٔ «نمایش تسک‌های بیشتر» نیز در دسترس است. در اندروید هم می‌توانید هنگام نزدیک‌شدن به انتهای RecyclerView، اگر `has_more` درست و درخواست دیگری در حال اجرا نیست، `page + 1` را بخوانید؛ در تغییر جست‌وجو/فیلتر فهرست را پاک و از صفحهٔ ۱ شروع کنید. از افزودن پاسخ‌های قدیمی بعد از تغییر فیلتر جلوگیری کنید.
 
-مرتب‌سازی به‌ترتیب وضعیت (در انتظار، در حال انجام، تکمیل‌شده)، سررسید و شناسه است. صفحه‌بندی بر اساس offset است، نه snapshot: اگر هم‌زمان تسکی ایجاد، حذف یا ویرایش شود، ممکن است آیتمی بین صفحه‌ها جابه‌جا، تکرار یا موقتاً جا بیفتد. شناسه‌ها را هنگام افزودن تکراری نکنید و برای مشاهدهٔ دادهٔ قطعی/تازه از صفحهٔ اول دوباره بارگذاری کنید. این API endpoint دریافت نامحدود همهٔ تسک‌ها در یک پاسخ ندارد.
+مرتب‌سازی به‌ترتیب وضعیت (در حال انجام، تکمیل‌شده)، سررسید و شناسه است. صفحه‌بندی بر اساس offset است، نه snapshot: اگر هم‌زمان تسکی ایجاد، حذف یا ویرایش شود، ممکن است آیتمی بین صفحه‌ها جابه‌جا، تکرار یا موقتاً جا بیفتد. شناسه‌ها را هنگام افزودن تکراری نکنید و برای مشاهدهٔ دادهٔ قطعی/تازه از صفحهٔ اول دوباره بارگذاری کنید. این API endpoint دریافت نامحدود همهٔ تسک‌ها در یک پاسخ ندارد.
 
 `task_get` یک `task` با اطلاعات تکمیلی و آرایه‌های `subtasks`، `comments`، `attachments` و `time_logs` برمی‌گرداند. برای فایل از URLهای برگردانده‌شده و توکن استفاده کنید.
 
@@ -226,7 +225,7 @@ curl -X POST "$BASE/mobile-v1.php?action=task_update" \
   -d '{"id":123,"status":"in_progress","progress":50}'
 ```
 
-در ساخت، `title` اجباری است و اگر مسئول مشخص نشود کاربر جاری در نظر گرفته می‌شود. فیلدهای اختیاری شامل `description`، `start_date`، `due_date`، `due_time`، `status`، `priority`، `progress`، `estimated_minutes`، `recurrence`، `category`، `tags` و `subtasks` هستند. وضعیت‌ها `todo`، `in_progress`، `done`؛ اولویت‌ها `low`، `medium`، `high`، `urgent` و تکرارها `none`، `daily`، `weekly`، `monthly` هستند. پیشرفت بین صفر و صد محدود می‌شود و وضعیت `done` آن را ۱۰۰ می‌کند. حداکثر ۱۲ زیرتسک هنگام ساخت ثبت می‌شود. مقادیر نامعتبر وضعیت و اولویت هنگام ساخت به مقدار پیش‌فرض تبدیل می‌شوند؛ تاریخ و ساعت نامعتبر خطا می‌دهند.
+در ساخت، `title` اجباری است و اگر مسئول مشخص نشود کاربر جاری در نظر گرفته می‌شود. فیلدهای اختیاری شامل `description`، `start_date`، `due_date`، `due_time`، `status`، `priority`، `progress`، `estimated_minutes`، `recurrence`، `category`، `tags` و `subtasks` هستند. وضعیت‌ها `in_progress` و `done` هستند و مقدار پیش‌فرض `in_progress` است؛ اولویت‌ها `low`، `medium`، `high`، `urgent` و تکرارها `none`، `daily`، `weekly`، `monthly` هستند. پیشرفت بین صفر و صد محدود می‌شود و وضعیت `done` آن را ۱۰۰ می‌کند. حداکثر ۱۲ زیرتسک هنگام ساخت ثبت می‌شود. مقادیر نامعتبر وضعیت و اولویت هنگام ساخت به مقدار پیش‌فرض تبدیل می‌شوند؛ تاریخ و ساعت نامعتبر خطا می‌دهند.
 
 برای ایجاد گروهی مدیر می‌تواند `"assigned_ids":[3,4]` یا `"assign_all":true` را جایگزین `assigned_to` کند. پاسخ `ids` شناسهٔ همهٔ تسک‌های مستقل و `task` جزئیات اولین مورد را دارد. به‌روزرسانی برای هر شناسه جداست؛ ارسال `assigned_ids` در ویرایش، عملیات گروهی نیست. برای پاک کردن تاریخ/ساعت در ویرایش می‌توان رشتهٔ خالی فرستاد.
 
@@ -333,4 +332,4 @@ client.newCall(request).execute().use { response ->
 - مسیرهای ثبت تکرارناپذیری تضمین‌شده ندارند؛ در timeout قبل از تکرار، داده‌های اخیر را بررسی و از کاربر تأیید بگیرید.
 - قبل از انتشار، ورود، خروج، محدودیت ورود، حساب غیرفعال، مجوز نقش‌ها، تسک تکی و گروهی، تقویم، اعلان و صوت را در محیط staging با کاربران واقعی آزمایشی و وب‌سرور عملیاتی آزمایش کنید. مخزن و نمونه‌های این سند اثبات استقرار یا سلامت سایت اصلی نیستند.
 
-**سازگاری وضعیت قدیمی:** وضعیت قبلی `review` برای نمایش و خروجی تسک به `in_progress` تبدیل می‌شود؛ ارسال قدیمی `review` نیز به `in_progress` نگاشت می‌شود. رکوردهای قدیمی بدون حذف متادیتا نگهداری می‌شوند.
+**سازگاری وضعیت قدیمی:** وضعیت‌های قبلی `todo` و `review` در خروجی و فیلتر به `in_progress` نگاشت می‌شوند؛ ارسال این مقادیر قدیمی برای ساخت یا ویرایش نیز `in_progress` ذخیره می‌کند. رکوردهای قبلی بدون حذف متادیتا نگهداری می‌شوند.

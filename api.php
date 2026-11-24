@@ -97,7 +97,7 @@ function parse_time_input(mixed $v): ?string
 function enrich_task(array $t): array
 {
     $t['id'] = (int) $t['id'];
-    if (($t['status'] ?? '') === 'review') $t['status'] = 'in_progress'; // legacy records remain intact
+    $t['status'] = normalize_task_status((string) ($t['status'] ?? '')); // Preserve historical rows, normalize output.
     $t['project_id'] = $t['project_id'] !== null ? (int) $t['project_id'] : null;
     $t['department_id'] = $t['department_id'] !== null ? (int) $t['department_id'] : null;
     $t['assigned_to'] = (int) $t['assigned_to'];
@@ -164,9 +164,8 @@ function create_task_record(array $input, string $createdVia, ?string $voiceFile
     $deptId = !empty($input['department_id'])
         ? (int) $input['department_id']
         : ((int) ($target['department_id'] ?? 0) ?: null);
-    $status = strtolower(clean_line($input['status'] ?? 'todo', 20));
-    if ($status === 'review') $status = 'in_progress';
-    if (!in_array($status, ['todo', 'in_progress', 'done'], true)) $status = 'todo';
+    $status = normalize_task_status(strtolower(clean_line($input['status'] ?? 'in_progress', 20)));
+    if (!in_array($status, ['in_progress', 'done'], true)) $status = 'in_progress';
     $priority = strtolower(clean_line($input['priority'] ?? 'medium', 20));
     if (!in_array($priority, ['low', 'medium', 'high', 'urgent'], true)) $priority = 'medium';
     $progress = max(0, min(100, (int) ($input['progress'] ?? ($status === 'done' ? 100 : 0))));
@@ -356,9 +355,9 @@ try {
                 "SELECT t.status, COUNT(*) AS c FROM tasks t WHERE {$base} AND t.is_archived = 0 GROUP BY t.status",
                 $params
             );
-            $byStatus = ['todo' => 0, 'in_progress' => 0, 'done' => 0];
+            $byStatus = ['in_progress' => 0, 'done' => 0];
             foreach ($counts as $r) {
-                $key = (string) $r['status'] === 'review' ? 'in_progress' : (string) $r['status'];
+                $key = normalize_task_status((string) $r['status']);
                 if (isset($byStatus[$key])) $byStatus[$key] += (int) $r['c'];
             }
             $total = array_sum($byStatus);
@@ -450,9 +449,8 @@ try {
             } elseif ($scope === 'assigned' && $isManager) {
                 $where[] = 't.assigned_to = ?'; $params[] = $uid;
             }
-            if ($status === 'not_done') $where[] = "t.status IN ('todo', 'in_progress', 'review')";
-            elseif ($status === 'in_progress' || $status === 'review') $where[] = "t.status IN ('in_progress', 'review')";
-            elseif ($status === 'todo' || $status === 'done') { $where[] = 't.status = ?'; $params[] = $status; }
+            if (in_array($status, ['not_done', 'in_progress', 'review', 'todo'], true)) $where[] = "t.status IN ('todo', 'in_progress', 'review')";
+            elseif ($status === 'done') { $where[] = 't.status = ?'; $params[] = $status; }
             if ($priority !== '' && in_array($priority, ['low', 'medium', 'high', 'urgent'], true)) {
                 $where[] = 't.priority = ?'; $params[] = $priority;
             }
@@ -474,7 +472,7 @@ try {
                     LEFT JOIN users c ON c.id = t.created_by
                     LEFT JOIN projects p ON p.id = t.project_id
                     WHERE ' . $whereSql . "
-                    ORDER BY CASE WHEN t.status='todo' THEN 0 WHEN t.status IN ('in_progress','review') THEN 1 ELSE 2 END, t.due_date ASC, t.id DESC LIMIT " . $perPage . ' OFFSET ' . $offset;
+                    ORDER BY CASE WHEN t.status IN ('todo','in_progress','review') THEN 0 ELSE 1 END, t.due_date ASC, t.id DESC LIMIT " . $perPage . ' OFFSET ' . $offset;
             $rows = Database::fetchAll($sql, $params);
             $countsByTask = [];
             if ($rows) {
@@ -524,9 +522,8 @@ try {
             }
             if (isset($data['description'])) { $sets[] = 'description = ?'; $params[] = clean_text($data['description'], 8000); }
             if (isset($data['status'])) {
-                $st = strtolower(clean_line($data['status'], 20));
-                if ($st === 'review') $st = 'in_progress';
-                if (in_array($st, ['todo', 'in_progress', 'done'], true)) {
+                $st = normalize_task_status(strtolower(clean_line($data['status'], 20)));
+                if (in_array($st, ['in_progress', 'done'], true)) {
                     $sets[] = 'status = ?'; $params[] = $st;
                     if ($st === 'done') {
                         if ($t['status'] !== 'done' || empty($t['completed_at'])) { $sets[] = 'completed_at = ?'; $params[] = $now; }
@@ -1273,7 +1270,7 @@ try {
             $tasks = Database::fetchAll($sql, $params);
             foreach ($tasks as &$task) {
                 $task['id'] = (int) $task['id'];
-                if ($task['status'] === 'review') $task['status'] = 'in_progress';
+                $task['status'] = normalize_task_status((string) $task['status']);
                 $task['due_time_fa'] = !empty($task['due_time']) ? fa_digits((string) $task['due_time']) : '';
                 $task['status_label'] = task_status_label((string) $task['status']);
             }
@@ -1299,7 +1296,7 @@ try {
             }
             $byDate = [];
             foreach ($tasks as $t) {
-                if ($t['status'] === 'review') $t['status'] = 'in_progress';
+                $t['status'] = normalize_task_status((string) $t['status']);
                 $d = substr((string) $t['due_date'], 0, 10);
                 $byDate[$d][] = [
                     'id' => (int) $t['id'], 'title' => $t['title'], 'status' => $t['status'],

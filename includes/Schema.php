@@ -167,7 +167,7 @@ final class Schema
                 `task_code` VARCHAR(50) NOT NULL,
                 `title` VARCHAR(255) NOT NULL,
                 `description` MEDIUMTEXT NULL,
-                `status` VARCHAR(20) NOT NULL DEFAULT 'todo',
+                `status` VARCHAR(20) NOT NULL DEFAULT 'in_progress',
                 `priority` VARCHAR(20) NOT NULL DEFAULT 'medium',
                 `progress` TINYINT UNSIGNED NOT NULL DEFAULT 0,
                 `project_id` INT UNSIGNED NULL DEFAULT NULL,
@@ -470,7 +470,7 @@ final class Schema
                 task_code TEXT NOT NULL UNIQUE,
                 title TEXT NOT NULL,
                 description TEXT NULL,
-                status TEXT NOT NULL DEFAULT 'todo',
+                status TEXT NOT NULL DEFAULT 'in_progress',
                 priority TEXT NOT NULL DEFAULT 'medium',
                 progress INTEGER NOT NULL DEFAULT 0,
                 project_id INTEGER NULL REFERENCES projects(id) ON DELETE SET NULL,
@@ -831,7 +831,7 @@ final class Schema
                     'TSK-1002',
                     'جلسه بررسی قرارداد همکاری با شرکت داده‌پردازان',
                     'ایجادشده از طریق فرمان صوتی مدیر: هماهنگی جلسه حضوری، آماده‌سازی پیش‌نویس قرارداد و جدول تعرفه‌های سازمانی.',
-                    'todo', 'urgent', 20, $proj2Id, $deptIds[2], $emp3Id, $adminId,
+                    'in_progress', 'urgent', 20, $proj2Id, $deptIds[2], $emp3Id, $adminId,
                     $today, $tomorrow, '10:30', 90, 'جلسه و قرارداد', 'قرارداد,فروش,ویس', 'voice_ai',
                     'برای فردا ساعت ده و نیم صبح جلسه بررسی قرارداد همکاری با شرکت داده‌پردازان رو برای مینا کریمی با اولویت فوری ثبت کن',
                     11, 'دستیار هوشمند فارسی', $now, $now,
@@ -869,7 +869,7 @@ final class Schema
                     'TSK-1005',
                     'برگزاری جلسه هماهنگی هفتگی مدیران واحدها',
                     'مرور شاخص‌های عملکرد هفتگی، بررسی موانع پروژه‌های فعال و برنامه‌ریزی اسپرینت بعدی.',
-                    'todo', 'medium', 0, $proj1Id, $deptIds[0], $adminId, $adminId,
+                    'in_progress', 'medium', 0, $proj1Id, $deptIds[0], $adminId, $adminId,
                     $today, $in4Days, '09:30', 60, 'جلسه', 'مدیریت,هماهنگی', 'manual', $now, $now,
                 ]
             );
@@ -881,7 +881,7 @@ final class Schema
                     'TSK-1006',
                     'به‌روزرسانی مستندات فنی API پورتال مشتریان',
                     'تسک تعریف‌شده توسط خود کارمند برای تکمیل راهنمای سرویس‌ها و نمونه درخواست‌ها.',
-                    'todo', 'low', 0, $proj1Id, $deptIds[1], $emp2Id, $emp2Id,
+                    'in_progress', 'low', 0, $proj1Id, $deptIds[1], $emp2Id, $emp2Id,
                     $today, $in7Days, '15:00', 120, 'مستندسازی', 'مستندات,API', 'manual', $now, $now,
                 ]
             );

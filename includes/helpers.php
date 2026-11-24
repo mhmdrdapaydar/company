@@ -240,12 +240,16 @@ function format_minutes_fa(int $minutes): string
 /**
  * برچسب‌های فارسی وضعیت تسک، اولویت و نقش
  */
+function normalize_task_status(string $status): string
+{
+    return in_array($status, ['todo', 'review'], true) ? 'in_progress' : $status;
+}
+
 function task_status_label(string $status): string
 {
+    $status = normalize_task_status($status);
     return match ($status) {
-        'todo'        => 'در انتظار انجام',
         'in_progress' => 'در حال انجام',
-        'review'      => 'در حال انجام',
         'done'        => 'انجام‌شده',
         default       => $status,
     };
